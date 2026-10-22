@@ -49,7 +49,7 @@ class Config:
     # Model selection
     model_selection_metric: str = "rmse"  # rmse, mae, r2
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Create directories if they don't exist."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)

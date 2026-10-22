@@ -15,7 +15,6 @@ linter:
     prefer_final_fields: true
     prefer_final_locals: true
     avoid_unnecessary_containers: true
-    avoid_unnecessary_new: true
     avoid_unused_constructor_parameters: true
     avoid_void_async: true
     cancel_subscriptions: true
@@ -26,14 +25,12 @@ linter:
     prefer_collection_literals: true
     prefer_conditional_assignment: true
     prefer_contains: true
-    prefer_equal_for_default_values: true
     prefer_final_in_for_each: true
     prefer_for_elements_to_map_fromIterable: true
     prefer_function_declarations_over_variables: true
     prefer_generic_function_type_aliases: true
     prefer_if_elements_to_conditional_expressions: true
     prefer_if_null_operators: true
-    prefer_inlining_additional_variables: true
     prefer_interpolation_to_compose_strings: true
     prefer_is_empty: true
     prefer_is_not_empty: true
@@ -44,13 +41,10 @@ linter:
     prefer_typing_uninitialized_variables: true
     type_init_formals: true
     unawaited_futures: true
-    unnecessary_await_in_return: true
     unnecessary_breaks: true
     unnecessary_constructor_name: true
-    unnecessary_final: true
     unnecessary_getters_setters: true
     unnecessary_late: true
-    unnecessary_new: true
     unnecessary_null_aware_assignments: true
     unnecessary_null_in_if_null_operators: true
     unnecessary_nullable_for_final_variable_declarations: true
@@ -63,7 +57,6 @@ linter:
     use_build_context_synchronously: true
     use_decorated_box: true
     use_full_hex_values_for_flutter_colors: true
-    use_if_null_to_convert_nulls_to_bools: true
     use_key_in_widget_constructors: true
     use_late_for_private_fields_and_variables: true
     use_rethrow_when_possible: true
