@@ -1,5 +1,6 @@
 """Data exploration utilities for HomeValue ML Backend."""
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,8 @@ import numpy as np
 import pandas as pd
 
 from ml_backend.config import config
+
+logger = logging.getLogger(__name__)
 
 _MAX_HEATMAP_FEATURES = 100
 _MAX_HEATMAP_ROWS = 5_000
@@ -47,8 +50,8 @@ def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
     if len(numeric_cols) > 0:
         result["describe"] = df[numeric_cols].describe().to_dict()
 
-        # Correlation matrix for numeric columns
-        if len(numeric_cols) > 1:
+        # Correlation matrix for numeric columns (bounded for wide frames)
+        if 1 < len(numeric_cols) <= _MAX_HEATMAP_FEATURES:
             corr_matrix = df[numeric_cols].corr()
             result["correlations"] = corr_matrix.round(4).to_dict()
 
@@ -91,6 +94,9 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
 
     exploration_dir = (config.data_dir / "exploration").resolve()
     exploration_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
+
+    if target_col is not None and target_col not in df.columns:
+        logger.warning("Target column %r is not present; skipping its plot", target_col)
 
     saved_paths: list[Path] = []
 
