@@ -3,11 +3,14 @@
 import hashlib
 import logging
 import os
+import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
+from pyarrow import ArrowException  # type: ignore[import-untyped]
 from sklearn.datasets import fetch_california_housing, fetch_openml  # type: ignore[import-untyped]
 
 from ml_backend.config import config
@@ -78,9 +81,27 @@ def _discard_cache(name: str) -> None:
     """Best-effort removal of a cache entry and its checksum sidecar."""
     for path in (_get_cache_path(name), _get_checksum_path(name)):
         try:
-            path.unlink(missing_ok=True)
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
         except OSError:
             logger.warning("Could not remove cache file %s", path)
+
+
+@contextmanager
+def _ephemeral_data_home() -> Iterator[Path]:
+    """Yield a throwaway scikit-learn data directory that is always removed.
+
+    Some fetchers persist joblib payloads inside ``data_home`` and deserialize
+    them on the next call. Keeping that directory ephemeral means no executable
+    pickle survives between runs.
+    """
+    data_home = Path(tempfile.mkdtemp(prefix="homevalue-sklearn-"))
+    try:
+        yield data_home
+    finally:
+        shutil.rmtree(data_home, ignore_errors=True)
 
 
 def _load_from_cache(name: str) -> pd.DataFrame | None:
@@ -111,7 +132,7 @@ def _load_from_cache(name: str) -> pd.DataFrame | None:
 
     try:
         frame = _validate_frame(pd.read_parquet(cache_path), name)
-    except (OSError, ValueError):
+    except (OSError, ValueError, ArrowException):
         logger.exception("Unreadable cache for dataset %s; discarding it", name)
         _discard_cache(name)
         return None
@@ -162,12 +183,13 @@ def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
 
     logger.info("Fetching California Housing from scikit-learn")
     config.ensure_dirs()
-    data = fetch_california_housing(
-        as_frame=True,
-        data_home=str(config.data_dir / "sklearn"),
-        n_retries=_FETCH_RETRIES,
-        delay=_FETCH_RETRY_DELAY,
-    )
+    with _ephemeral_data_home() as data_home:
+        data = fetch_california_housing(
+            as_frame=True,
+            data_home=str(data_home),
+            n_retries=_FETCH_RETRIES,
+            delay=_FETCH_RETRY_DELAY,
+        )
     df = _validate_frame(data.frame, "california_housing")
     X, y = _split_target(df, CALIFORNIA_TARGET, "california_housing")
     _save_to_cache(df, "california_housing")
@@ -194,14 +216,15 @@ def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
 
     logger.info("Fetching Ames Housing from OpenML")
     config.ensure_dirs()
-    data = fetch_openml(
-        name="ames_housing",
-        version=1,
-        as_frame=True,
-        data_home=str(config.data_dir / "sklearn"),
-        n_retries=_FETCH_RETRIES,
-        delay=_FETCH_RETRY_DELAY,
-    )
+    with _ephemeral_data_home() as data_home:
+        data = fetch_openml(
+            name="ames_housing",
+            version=1,
+            as_frame=True,
+            data_home=str(data_home),
+            n_retries=_FETCH_RETRIES,
+            delay=_FETCH_RETRY_DELAY,
+        )
     if data.target is None:
         raise ValueError("Ames Housing fetch returned no target column")
 
@@ -215,7 +238,7 @@ def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
     )
 
     df_with_target = features.copy()
-    df_with_target[AMES_TARGET] = target.to_numpy()
+    df_with_target[AMES_TARGET] = target.reindex(features.index).to_numpy()
     _save_to_cache(df_with_target, "ames_housing")
 
     return features, target

@@ -3,6 +3,7 @@
 import hashlib
 import os
 import stat
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -114,6 +115,20 @@ def test_atomic_write_preserves_target_and_cleans_up_on_failure(cache_dir):
     assert list(target.parent.glob(".*.tmp")) == []
 
 
+def test_discard_cache_tolerates_unlink_errors(cache_dir, monkeypatch):
+    cache_path = cache_dir / "demo.parquet"
+    cache_path.write_bytes(b"x")
+
+    def failing_unlink(self, missing_ok=False):
+        raise OSError("denied")
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+    loader._discard_cache("demo")
+
+    assert cache_path.exists()
+
+
 def test_load_from_cache_returns_none_when_missing(cache_dir):
     assert loader._load_from_cache("absent") is None
 
@@ -154,9 +169,11 @@ def test_load_from_cache_tolerates_unreadable_checksum(cache_dir):
 
 
 def test_load_from_cache_tolerates_directory_in_place_of_parquet(cache_dir):
-    (cache_dir / "directory.parquet").mkdir()
+    cache_path = cache_dir / "directory.parquet"
+    cache_path.mkdir()
 
     assert loader._load_from_cache("directory") is None
+    assert not cache_path.exists()
 
 
 def test_load_from_cache_rejects_empty_checksum(cache_dir):
@@ -169,9 +186,13 @@ def test_load_from_cache_rejects_empty_checksum(cache_dir):
 def test_load_california_housing_fetches_then_serves_from_cache(cache_dir, monkeypatch):
     frame = _california_frame()
     calls = []
+    data_homes = []
 
     def fake_fetch(**kwargs):
         calls.append(kwargs)
+        data_home = Path(kwargs["data_home"])
+        assert data_home.is_dir()
+        data_homes.append(data_home)
         return SimpleNamespace(frame=frame)
 
     monkeypatch.setattr(loader, "fetch_california_housing", fake_fetch)
@@ -181,11 +202,12 @@ def test_load_california_housing_fetches_then_serves_from_cache(cache_dir, monke
     assert len(calls) == 1
     assert calls[0]["as_frame"] is True
     assert calls[0]["n_retries"] == loader._FETCH_RETRIES
-    assert calls[0]["data_home"] == str(cache_dir / "sklearn")
+    assert data_homes and not data_homes[0].exists()
     assert (cache_dir / "california_housing.parquet").exists()
     assert "MedHouseVal" not in X.columns
     assert y.name == "MedHouseVal"
-    assert len(X) == len(y) == len(frame)
+    pd.testing.assert_frame_equal(X, frame.drop(columns=["MedHouseVal"]))
+    pd.testing.assert_series_equal(y, frame["MedHouseVal"].rename("MedHouseVal"))
 
     monkeypatch.setattr(
         loader, "fetch_california_housing", lambda **kwargs: pytest.fail("cache miss")
@@ -250,9 +272,13 @@ def test_load_ames_housing_drops_all_target_aliases(cache_dir, monkeypatch):
     frame = _ames_frame()
     target = _ames_target(frame)
     captured = {}
+    data_homes = []
 
     def fake_fetch(**kwargs):
         captured.update(kwargs)
+        data_home = Path(kwargs["data_home"])
+        assert data_home.is_dir()
+        data_homes.append(data_home)
         return SimpleNamespace(frame=frame, target=target)
 
     monkeypatch.setattr(loader, "fetch_openml", fake_fetch)
@@ -261,11 +287,13 @@ def test_load_ames_housing_drops_all_target_aliases(cache_dir, monkeypatch):
 
     assert captured["name"] == "ames_housing"
     assert captured["n_retries"] == loader._FETCH_RETRIES
+    assert data_homes and not data_homes[0].exists()
     assert y.name == "SalePrice"
     assert y.dtype == float
     assert "SalePrice" not in X.columns
     assert "Sale_Price" not in X.columns
-    assert len(X) == len(y) == len(frame)
+    pd.testing.assert_frame_equal(X, frame.drop(columns=["Sale_Price"]))
+    pd.testing.assert_series_equal(y, target.astype(float).rename("SalePrice"))
 
     cached = pd.read_parquet(cache_dir / "ames_housing.parquet")
     assert "SalePrice" in cached.columns
@@ -275,6 +303,42 @@ def test_load_ames_housing_drops_all_target_aliases(cache_dir, monkeypatch):
     X_cached, y_cached = loader.load_ames_housing()
     pd.testing.assert_frame_equal(X_cached, X)
     pd.testing.assert_series_equal(y_cached, y)
+
+
+def test_load_ames_housing_fetch_drops_both_target_aliases(cache_dir, monkeypatch):
+    frame = _ames_frame()
+    frame["SalePrice"] = frame["Sale_Price"]
+    target = _ames_target(frame)
+    monkeypatch.setattr(
+        loader,
+        "fetch_openml",
+        lambda **kwargs: SimpleNamespace(frame=frame, target=target),
+    )
+
+    X, y = loader.load_ames_housing()
+
+    assert y.name == "SalePrice"
+    assert "SalePrice" not in X.columns
+    assert "Sale_Price" not in X.columns
+    cached = pd.read_parquet(cache_dir / "ames_housing.parquet")
+    assert "SalePrice" in cached.columns
+    assert "Sale_Price" not in cached.columns
+
+
+def test_ephemeral_data_home_is_removed_after_fetch_failure(cache_dir, monkeypatch):
+    seen = {}
+
+    def failing_fetch(**kwargs):
+        seen["data_home"] = Path(kwargs["data_home"])
+        assert seen["data_home"].is_dir()
+        raise RuntimeError("fetch failed")
+
+    monkeypatch.setattr(loader, "fetch_california_housing", failing_fetch)
+
+    with pytest.raises(RuntimeError, match="fetch failed"):
+        loader.load_california_housing()
+
+    assert not seen["data_home"].exists()
 
 
 def test_load_ames_housing_renames_openml_cache_target(cache_dir):
