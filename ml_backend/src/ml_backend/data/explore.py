@@ -4,24 +4,19 @@ import re
 from pathlib import Path
 from typing import Any
 
-import matplotlib
+import numpy as np
+import pandas as pd
 
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-import seaborn as sns  # noqa: E402
-
-from ml_backend.config import config  # noqa: E402
+from ml_backend.config import config
 
 _MAX_HEATMAP_FEATURES = 100
+_MAX_SLUG_LENGTH = 80
 
 
 def _safe_filename_part(value: str) -> str:
-    """Reduce an arbitrary column name to a safe filename fragment."""
+    """Reduce an arbitrary column name to a safe, bounded filename fragment."""
     slug = re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
-    return slug or "target"
+    return (slug or "target")[:_MAX_SLUG_LENGTH]
 
 
 def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
@@ -77,6 +72,9 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     """
     Save exploration plots to data/exploration/.
 
+    Plotting is imported lazily so the base package does not require the
+    optional visualisation dependencies.
+
     Args:
         df: DataFrame to plot
         target_col: Optional target column name for target-specific plots
@@ -84,6 +82,12 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     Returns:
         List of saved plot file paths
     """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
     exploration_dir = (config.data_dir / "exploration").resolve()
     exploration_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
 
@@ -93,10 +97,18 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     if target_col and target_col in df.columns:
         path = exploration_dir / f"target_distribution_{_safe_filename_part(target_col)}.png"
         fig, ax = plt.subplots(figsize=(10, 6))
-        sns.histplot(data=df, x=target_col, kde=True, ax=ax)
-        ax.set_title(f"Distribution of {target_col}")
-        fig.savefig(path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
+        try:
+            target = df[target_col]
+            sns.histplot(
+                data=df,
+                x=target_col,
+                kde=bool(pd.api.types.is_numeric_dtype(target)),
+                ax=ax,
+            )
+            ax.set_title(f"Distribution of {target_col}")
+            fig.savefig(path, dpi=150, bbox_inches="tight")
+        finally:
+            plt.close(fig)
         saved_paths.append(path)
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -105,20 +117,24 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     if 1 < len(numeric_cols) <= _MAX_HEATMAP_FEATURES:
         path = exploration_dir / "correlation_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 10))
-        sns.heatmap(df[numeric_cols].corr(), annot=False, cmap="coolwarm", center=0, ax=ax)
-        ax.set_title("Feature Correlation Matrix")
-        fig.savefig(path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
+        try:
+            sns.heatmap(df[numeric_cols].corr(), annot=False, cmap="coolwarm", center=0, ax=ax)
+            ax.set_title("Feature Correlation Matrix")
+            fig.savefig(path, dpi=150, bbox_inches="tight")
+        finally:
+            plt.close(fig)
         saved_paths.append(path)
 
     # Missing values heatmap
     if df.isnull().any().any():
         path = exploration_dir / "missing_values_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 8))
-        sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax)
-        ax.set_title("Missing Values Pattern")
-        fig.savefig(path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
+        try:
+            sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax)
+            ax.set_title("Missing Values Pattern")
+            fig.savefig(path, dpi=150, bbox_inches="tight")
+        finally:
+            plt.close(fig)
         saved_paths.append(path)
 
     return saved_paths

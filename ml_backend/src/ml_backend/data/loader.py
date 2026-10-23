@@ -2,6 +2,9 @@
 
 import hashlib
 import logging
+import os
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -13,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 CALIFORNIA_TARGET = "MedHouseVal"
 AMES_TARGET = "SalePrice"
-# Older versions of the OpenML record spell the target with an underscore.
+# The OpenML record spells the target with an underscore, both as a frame column
+# and as the separate target series.
 _LEGACY_AMES_TARGET = "Sale_Price"
 
 _MAX_ROWS = 1_000_000
@@ -42,38 +46,68 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _atomic_write(path: Path, writer: Callable[[Path], None]) -> None:
+    """Write a file through a temporary sibling and atomically replace it."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+    descriptor, temp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    temp_path = Path(temp_name)
+    try:
+        writer(temp_path)
+        temp_path.chmod(0o640)
+        os.replace(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def _save_to_cache(df: pd.DataFrame, name: str) -> None:
     """Save a DataFrame to the parquet cache with an integrity sidecar."""
     cache_path = _get_cache_path(name)
-    cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
-    df.to_parquet(cache_path)
-    cache_path.chmod(0o640)
+    _atomic_write(cache_path, df.to_parquet)
 
-    checksum_path = _get_checksum_path(name)
-    checksum_path.write_text(_sha256(cache_path), encoding="utf-8")
-    checksum_path.chmod(0o640)
+    def write_checksum(path: Path) -> None:
+        path.write_text(_sha256(cache_path), encoding="utf-8")
+
+    _atomic_write(_get_checksum_path(name), write_checksum)
     logger.info("Cached dataset %s (%d rows, %d columns)", name, *df.shape)
 
 
+def _discard_cache(name: str) -> None:
+    """Remove a cache entry and its checksum sidecar."""
+    _get_cache_path(name).unlink(missing_ok=True)
+    _get_checksum_path(name).unlink(missing_ok=True)
+
+
 def _load_from_cache(name: str) -> pd.DataFrame | None:
-    """Load a cached DataFrame, discarding it if its checksum does not match."""
+    """Load a verified cached DataFrame, or None when it is missing or invalid."""
     cache_path = _get_cache_path(name)
     if not cache_path.exists():
         logger.info("Cache miss for dataset %s", name)
         return None
 
     checksum_path = _get_checksum_path(name)
-    if checksum_path.exists():
-        expected = checksum_path.read_text(encoding="utf-8").strip()
-        actual = _sha256(cache_path)
-        if actual != expected:
-            logger.warning("Checksum mismatch for cached dataset %s; discarding it", name)
-            cache_path.unlink(missing_ok=True)
-            checksum_path.unlink(missing_ok=True)
-            return None
+    if not checksum_path.exists():
+        logger.warning("Ignoring unverified cache %s (missing checksum sidecar)", name)
+        _discard_cache(name)
+        return None
+
+    expected = checksum_path.read_text(encoding="utf-8").strip()
+    if _sha256(cache_path) != expected:
+        logger.warning("Checksum mismatch for cached dataset %s; discarding it", name)
+        _discard_cache(name)
+        return None
+
+    try:
+        frame = _validate_frame(pd.read_parquet(cache_path), name)
+    except (OSError, ValueError):
+        logger.exception("Unreadable cache for dataset %s; discarding it", name)
+        _discard_cache(name)
+        return None
 
     logger.info("Cache hit for dataset %s", name)
-    return pd.read_parquet(cache_path)
+    return frame
 
 
 def _validate_frame(df: pd.DataFrame, name: str) -> pd.DataFrame:
@@ -89,12 +123,14 @@ def _validate_frame(df: pd.DataFrame, name: str) -> pd.DataFrame:
 
 
 def _split_target(df: pd.DataFrame, target: str, name: str) -> tuple[pd.DataFrame, pd.Series]:
-    """Split a frame into features and a named target series."""
+    """Split a frame into features and a named, numeric target series."""
     if target not in df.columns:
         raise ValueError(f"Dataset {name!r} is missing the target column {target!r}")
     X = df.drop(columns=[target])
-    y = df[target].rename(target)
-    return X, y
+    y = df[target]
+    if not pd.api.types.is_numeric_dtype(y):
+        raise ValueError(f"Dataset {name!r} has a non-numeric target column {target!r}")
+    return X, y.rename(target)
 
 
 def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
@@ -109,8 +145,12 @@ def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
         return _split_target(cached, CALIFORNIA_TARGET, "california_housing")
 
     logger.info("Fetching California Housing from scikit-learn")
+    config.ensure_dirs()
     data = fetch_california_housing(
-        as_frame=True, n_retries=_FETCH_RETRIES, delay=_FETCH_RETRY_DELAY
+        as_frame=True,
+        data_home=str(config.data_dir / "sklearn"),
+        n_retries=_FETCH_RETRIES,
+        delay=_FETCH_RETRY_DELAY,
     )
     df = _validate_frame(data.frame, "california_housing")
     _save_to_cache(df, "california_housing")
@@ -128,24 +168,33 @@ def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
     if cached is not None:
         if AMES_TARGET not in cached.columns and _LEGACY_AMES_TARGET in cached.columns:
             cached = cached.rename(columns={_LEGACY_AMES_TARGET: AMES_TARGET})
+        cached = cached.drop(columns=[_LEGACY_AMES_TARGET], errors="ignore")
         return _split_target(cached, AMES_TARGET, "ames_housing")
 
     logger.info("Fetching Ames Housing from OpenML")
+    config.ensure_dirs()
     data = fetch_openml(
         name="ames_housing",
         version=1,
         as_frame=True,
+        data_home=str(config.data_dir / "sklearn"),
         n_retries=_FETCH_RETRIES,
         delay=_FETCH_RETRY_DELAY,
     )
-    df = _validate_frame(data.frame, "ames_housing")
-    target = data.target
-    if target is None:
+    if data.target is None:
         raise ValueError("Ames Housing fetch returned no target column")
 
-    df_with_target = df.copy()
+    df = _validate_frame(data.frame, "ames_housing")
+    # OpenML's frame embeds the target under the legacy name; drop every target
+    # alias so it can never leak into the feature matrix.
+    features = df.drop(
+        columns=[AMES_TARGET, _LEGACY_AMES_TARGET],
+        errors="ignore",
+    )
+    target = data.target.astype(float).rename(AMES_TARGET)
+
+    df_with_target = features.copy()
     df_with_target[AMES_TARGET] = target.to_numpy()
     _save_to_cache(df_with_target, "ames_housing")
 
-    y = target.astype(float).rename(AMES_TARGET)
-    return df, y
+    return features, target

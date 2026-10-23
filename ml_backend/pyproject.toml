@@ -46,6 +46,7 @@ include = ["ml_backend*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -71,8 +72,8 @@ extend-exclude = '''
   | buck-out
   | build
   | dist
-  | ml_backend/data
-  | ml_backend/models
+  | \.venv
+  | \.pytest_cache
 )/
 '''
 
@@ -128,3 +129,11 @@ warn_no_return = true
 strict_optional = true
 show_error_codes = true
 namespace_packages = true
+
+[tool.coverage.run]
+branch = true
+source = ["ml_backend"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true

@@ -152,3 +152,36 @@ def test_save_exploration_plots_closes_figures(plots_dir):
     explore.save_exploration_plots(df, target_col="y")
 
     assert plt.get_fignums() == []
+
+
+def test_safe_filename_part_falls_back_for_empty_slug():
+    assert explore._safe_filename_part("###") == "target"
+    assert explore._safe_filename_part("") == "target"
+
+
+def test_safe_filename_part_is_bounded():
+    assert len(explore._safe_filename_part("a" * 500)) == explore._MAX_SLUG_LENGTH
+
+
+def test_save_exploration_plots_skips_heatmap_for_wide_frames(plots_dir, monkeypatch):
+    monkeypatch.setattr(explore, "_MAX_HEATMAP_FEATURES", 2)
+    df = pd.DataFrame({f"c{i}": [1.0, 2.0, 3.0] for i in range(3)})
+
+    assert explore.save_exploration_plots(df) == []
+    assert not (plots_dir / "exploration" / "correlation_heatmap.png").exists()
+
+
+def test_save_exploration_plots_ignores_unknown_target(plots_dir):
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "y": [4.0, 5.0, 6.0]})
+
+    paths = explore.save_exploration_plots(df, target_col="missing")
+
+    assert [path.name for path in paths] == ["correlation_heatmap.png"]
+
+
+def test_save_exploration_plots_handles_categorical_target(plots_dir):
+    df = pd.DataFrame({"cat": ["A", "B", "A"], "x": [1.0, 2.0, 3.0]})
+
+    paths = explore.save_exploration_plots(df, target_col="cat")
+
+    assert "target_distribution_cat.png" in [path.name for path in paths]

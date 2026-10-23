@@ -1,18 +1,32 @@
 """Configuration for HomeValue ML Backend."""
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_REPO_MARKERS = ("pubspec.yaml", "ml_backend")
+
 
 def _find_repo_root(start: Path) -> Path:
-    """Locate the repository root by walking up to the Flutter/pubspec marker."""
+    """Locate the repository root by walking up to the project markers."""
     for candidate in (start, *start.parents):
-        if (candidate / "pubspec.yaml").is_file() and (candidate / "ml_backend").is_dir():
+        if all((candidate / marker).exists() for marker in _REPO_MARKERS):
             return candidate
     raise RuntimeError(f"Could not locate the HomeValue repository root above {start}")
 
 
-_REPO_ROOT = _find_repo_root(Path(__file__).resolve())
+def _default_project_root() -> Path:
+    """Resolve the project root, tolerating installed (wheel) deployments."""
+    override = os.getenv("HOMEVALUE_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    try:
+        return _find_repo_root(Path(__file__).resolve())
+    except RuntimeError:
+        return Path.cwd()
+
+
+_DEFAULT_ROOT = _default_project_root()
 
 
 @dataclass
@@ -20,10 +34,10 @@ class Config:
     """Central configuration for ML pipeline."""
 
     # Paths
-    project_root: Path = field(default_factory=lambda: _REPO_ROOT)
-    data_dir: Path = field(default_factory=lambda: _REPO_ROOT / "data")
-    models_dir: Path = field(default_factory=lambda: _REPO_ROOT / "models")
-    logs_dir: Path = field(default_factory=lambda: _REPO_ROOT / "logs")
+    project_root: Path = field(default_factory=lambda: _DEFAULT_ROOT)
+    data_dir: Path = field(default_factory=lambda: _DEFAULT_ROOT / "data")
+    models_dir: Path = field(default_factory=lambda: _DEFAULT_ROOT / "models")
+    logs_dir: Path = field(default_factory=lambda: _DEFAULT_ROOT / "logs")
 
     # Data
     test_size: float = 0.2
@@ -52,7 +66,7 @@ class Config:
     gb_n_iter_search: int = 20
 
     # API
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_workers: int = 1
 
@@ -60,7 +74,14 @@ class Config:
     model_selection_metric: str = "rmse"  # rmse, mae, r2
 
     def __post_init__(self) -> None:
-        """Create directories if they don't exist."""
+        """Reparent default paths when a custom project root is supplied."""
+        for name in ("data", "models", "logs"):
+            default_path = _DEFAULT_ROOT / name
+            if getattr(self, f"{name}_dir") == default_path:
+                setattr(self, f"{name}_dir", self.project_root / name)
+
+    def ensure_dirs(self) -> None:
+        """Create the configured working directories."""
         for directory in (self.data_dir, self.models_dir, self.logs_dir):
             directory.mkdir(parents=True, exist_ok=True, mode=0o750)
 

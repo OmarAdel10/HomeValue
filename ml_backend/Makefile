@@ -28,15 +28,17 @@ lint:
 
 # Run tests
 test:
-	pytest tests/ -v
+	pytest tests/ -v --cov=ml_backend --cov-branch --cov-report=term-missing
 
 # Train model
 train:
-	python -m ml_backend.scripts.train
+	@echo "Not implemented in phase 1 - see README roadmap."
+	@exit 1
 
 # Serve API
 serve:
-	uvicorn ml_backend.server:app --host 0.0.0.0 --port 8000 --reload
+	@echo "Not implemented in phase 1 - see README roadmap."
+	@exit 1
 
 # Clean cache
 clean:

@@ -12,7 +12,8 @@ def test_config_exists():
 
 
 def test_config_directories_exist():
-    """Test that config directories exist after init."""
+    """Test that config directories are created on demand."""
+    config.ensure_dirs()
     assert config.data_dir.exists()
     assert config.models_dir.exists()
     assert config.logs_dir.exists()
