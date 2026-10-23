@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -33,7 +36,15 @@ jobs:
           ruff check src/ tests/
           mypy src/
       - name: Test
-        run: pytest tests/ -v --cov=ml_backend --cov-report=term-missing
+        run: pytest tests/ -v --cov=ml_backend --cov-branch --cov-report=term-missing
+      - name: Wheel import smoke test
+        run: |
+          pip install build
+          python -m build --wheel
+          python -m venv "$RUNNER_TEMP/wheel-env"
+          "$RUNNER_TEMP/wheel-env/bin/pip" install --quiet dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-env/bin/python" -c "import ml_backend; from ml_backend.data.loader import load_california_housing"
 
   flutter:
     name: Flutter Desktop
