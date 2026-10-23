@@ -5,6 +5,8 @@ Plane project `HOME` (HomeValue).
 
 ## Task 1-2 / Phase 1 review (2026-10-23)
 
+- **HOME-6** — Phase 1 delivery: scaffold, California/Ames loaders, verified cache,
+  exploration, CI/CD. Tracked as the parent work item for this branch.
 - **HOME-1** — Dependency reproducibility: `ml_backend/pyproject.toml` uses lower
   bounds only. Add a lockfile with hashes and a `pip-audit` gate. Deferred while the
   phase surface is still small; revisit before Phase 2.
