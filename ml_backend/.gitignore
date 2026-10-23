@@ -44,12 +44,9 @@ htmlcov/
 dmypy.json
 
 # Project specific
-ml_backend/data/*.parquet
-ml_backend/data/*.csv
-ml_backend/data/exploration/
-ml_backend/models/*.joblib
-ml_backend/models/*.pkl
-ml_backend/logs/
+data/
+models/
+logs/
 .env
 .env.local
 

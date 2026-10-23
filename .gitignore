@@ -60,4 +60,8 @@ __pycache__/
 /data/
 /models/
 /logs/
-*.parquet
+
+# Local environment
+.env
+.env.*
+!.env.example
