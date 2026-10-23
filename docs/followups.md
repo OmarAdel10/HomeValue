@@ -48,3 +48,8 @@ Plane project `HOME` (HomeValue).
   and dependency versions alongside the artifact for reproducibility.
 - Booleans and datetime columns are rejected by `infer_feature_types`; support requires
   an explicit encoding decision, so it stays out of scope until a dataset needs it.
+- **HOME-13** — `infer_feature_types` classifies any `object` column as categorical;
+  mixed values such as `["INLAND", 1, None]` fail later inside `OneHotEncoder` without
+  naming the column. Add a pandas `infer_dtype` guard before Ames CSV ingestion.
+- `_to_object_with_nan` is referenced by `FunctionTransformer`; promote it to a public
+  symbol before model artifacts pickle the preprocessing pipeline (HOME-7/HOME-12).

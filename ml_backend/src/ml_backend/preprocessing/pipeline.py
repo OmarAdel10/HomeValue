@@ -1,9 +1,11 @@
 """Preprocessing pipeline construction for HomeValue."""
 
 from collections.abc import Hashable, Sequence
+from typing import Self
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin  # type: ignore[import-untyped]
 from sklearn.compose import ColumnTransformer  # type: ignore[import-untyped]
 from sklearn.impute import SimpleImputer  # type: ignore[import-untyped]
 from sklearn.pipeline import Pipeline  # type: ignore[import-untyped]
@@ -27,6 +29,42 @@ def _to_object_with_nan(X: pd.DataFrame) -> pd.DataFrame:
     return X.astype(object).where(pd.notna(X), np.nan)
 
 
+class _AllMissingCategoricalGuard(TransformerMixin, BaseEstimator):
+    """Fail closed when a declared categorical column has no observed values."""
+
+    def fit(self, X: pd.DataFrame, y: pd.Series | None = None) -> Self:
+        """Reject categorical columns that are entirely missing."""
+        if isinstance(X, pd.DataFrame):
+            empty = [column for column in X.columns if X[column].isna().all()]
+            if empty:
+                raise ValueError(
+                    "Categorical features have no observed values: "
+                    f"{list(empty)}; populate or drop them from categorical_features"
+                )
+        self.n_features_in_ = X.shape[1]
+        self.feature_names_in_ = np.asarray(getattr(X, "columns", []), dtype=object)
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Pass the validated categorical frame through unchanged."""
+        return X
+
+    def get_feature_names_out(self, input_features: Sequence[Hashable] | None = None) -> np.ndarray:
+        """Return unchanged feature names."""
+        if input_features is not None:
+            return np.asarray(input_features, dtype=object)
+        return np.asarray(self.feature_names_in_, dtype=object)
+
+
+def _validate_feature_argument(features: Sequence[Hashable], label: str) -> list[Hashable]:
+    """Normalize a feature sequence and reject bare strings."""
+    if isinstance(features, (str, bytes)):
+        raise TypeError(
+            f"{label}_features must be a sequence of column labels, not a single string"
+        )
+    return list(features)
+
+
 def build_preprocessing_pipeline(
     numeric_features: Sequence[Hashable],
     categorical_features: Sequence[Hashable] = (),
@@ -45,8 +83,8 @@ def build_preprocessing_pipeline(
     columns are declared. Passing ``None`` with a partial source set raises,
     ``True`` requires every source column, and ``False`` disables the step.
     """
-    numeric = list(numeric_features)
-    categorical = list(categorical_features)
+    numeric = _validate_feature_argument(numeric_features, "numeric")
+    categorical = _validate_feature_argument(categorical_features, "categorical")
     if not numeric and not categorical:
         raise ValueError("At least one feature is required to build a pipeline")
 
@@ -94,6 +132,7 @@ def build_preprocessing_pipeline(
 
     if categorical:
         categorical_steps = [
+            ("guard", _AllMissingCategoricalGuard()),
             ("normalize", FunctionTransformer(_to_object_with_nan, feature_names_out="one-to-one")),
             (
                 "imputer",

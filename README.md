@@ -129,11 +129,12 @@ X_test_encoded = pipeline.transform(X_test)
 ```
 
 Feature engineering runs automatically when the four California source columns are
-present; pass `feature_engineering=False` to disable it. Because the bundled dataset
-stores per-household averages, the pipeline derives `rooms_per_person`,
-`bedrooms_per_room`, and `households` instead of duplicating `AveRooms`/`AveOccup`.
-Category levels are not dropped, so an unseen category encodes as an all-zero block
-rather than colliding with a reference level.
+declared as numeric features; pass `feature_engineering=False` to disable it. A
+partial declaration raises unless engineering is explicitly disabled. Because the
+bundled dataset stores per-household averages, the pipeline derives
+`rooms_per_person`, `bedrooms_per_room`, and `households` instead of duplicating
+`AveRooms`/`AveOccup`. Category levels are not dropped, so an unseen category
+encodes as an all-zero block rather than colliding with a reference level.
 
 ## Project Structure
 

@@ -39,6 +39,11 @@ class FeatureEngineeringTransformer(TransformerMixin, BaseEstimator):
         """Return a copy of ``X`` with the engineered ratio columns appended."""
         check_is_fitted(self, attributes=["n_features_in_"])
         self._validate(X)
+        if list(X.columns) != list(self.feature_names_in_):
+            raise ValueError(
+                "FeatureEngineeringTransformer input columns changed since fit: "
+                f"expected {list(self.feature_names_in_)}, got {list(X.columns)}"
+            )
         collisions = sorted(set(_ENGINEERED_COLUMNS) & set(X.columns))
         if collisions:
             raise ValueError(f"Engineered columns already present in input: {collisions}")
@@ -61,6 +66,11 @@ class FeatureEngineeringTransformer(TransformerMixin, BaseEstimator):
             names = np.asarray(self.feature_names_in_, dtype=object)
         else:
             names = np.asarray(input_features, dtype=object)
+            if len(names) != len(self.feature_names_in_):
+                raise ValueError(
+                    "Number of input feature names does not match fitted features: "
+                    f"expected {len(self.feature_names_in_)}, got {len(names)}"
+                )
         return np.asarray([*names, *_ENGINEERED_COLUMNS], dtype=object)
 
     @staticmethod
