@@ -1,6 +1,15 @@
 # HomeValue
 
-End-to-end machine learning project for house price prediction using California Housing dataset. Implements complete ML pipeline (data preprocessing, feature engineering, model training, regularization, ensemble methods, hyperparameter tuning) with scikit-learn, exposed via FastAPI. Linux desktop GUI built with Flutter 3.x following MVVM + BLoC architecture. Course project for Advanced Machine Learning (Weeks 02-05).
+End-to-end machine learning project for house price prediction using the California
+Housing dataset. Implements a complete ML pipeline (preprocessing, feature engineering,
+model training, regularization, ensembles, tuning) with scikit-learn, exposed via
+FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
+Advanced Machine Learning (Weeks 02-05).
+
+> **Status — Phase 1 (foundation).** The ML data layer (California + Ames loaders,
+> verified parquet cache, exploratory analysis) and CI/CD are implemented. Preprocessing,
+> models, the FastAPI service, and the Flutter UI are roadmap items below and are not
+> available yet.
 
 ## Architecture
 
@@ -11,7 +20,7 @@ graph TD
     C --> D[Data Loading & Preprocessing]
     C --> E[Model Training]
     C --> F[Model Selection & Serialization]
-    
+
     subgraph "ML Models"
     E --> E1[LinearRegression]
     E --> E2[DecisionTreeRegressor]
@@ -23,116 +32,86 @@ graph TD
     end
 ```
 
-## Features
+## Implemented in Phase 1
 
-- **Data Pipeline**: California Housing + Ames Housing datasets, feature engineering (rooms_per_household, bedrooms_per_room, population_per_household)
-- **Models**: Linear, Decision Tree, Ridge, Lasso, ElasticNet, Random Forest, Extra Trees, Voting, Stacking
-- **Regularization**: Ridge (L2), Lasso (L1), ElasticNet with cross-validation
-- **Ensembles**: Bagging, Voting, Stacking with cross-validated base estimators
-- **Hyperparameter Tuning**: RandomizedSearchCV for Random Forest & Gradient Boosting
-- **API**: FastAPI with `/predict`, `/predict_batch`, `/model_info`, `/model_comparison`, `/health`, `/train`
-- **GUI**: Flutter desktop (Linux) with feature input form, model selector, prediction display, comparison charts
+- **Data loading**: California Housing (`MedHouseVal`) and Ames Housing (`SalePrice`).
+- **Verified cache**: parquet files with a SHA-256 sidecar; unverified or tampered
+  caches are discarded and refetched.
+- **Exploration**: dataset statistics (shape, dtypes, missing values, correlations,
+  categorical summaries) and optional distribution/correlation/missing-value plots.
+- **CI**: formatting, linting, typing, tests, Linux desktop build on every branch.
+- **CD**: tag-driven release on `master`, builds the Python wheel and Linux bundle.
+
+## Roadmap
+
+| Phase | Scope |
+|-------|-------|
+| 2 | Preprocessing pipeline, feature engineering, train/test split |
+| 3 | Baseline + regularized models (Ridge/Lasso/ElasticNet), cross-validation |
+| 4 | Ensembles (Voting, Bagging, Random Forest, Extra Trees, Boosting, Stacking), tuning |
+| 5 | FastAPI endpoints (`/predict`, `/predict_batch`, `/health`, `/model_info`, `/model_comparison`, `/train`) |
+| 6 | Flutter Linux desktop UI (MVVM + BLoC): input form, model selector, charts |
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.11+
-- Flutter 3.22+ (with Linux desktop support: `flutter config --enable-linux-desktop`)
-- uv or pip
+- Flutter 3.44+ with Linux desktop support (`flutter config --enable-linux-desktop`)
 
-### Backend Setup
+### Backend
 ```bash
 cd ml_backend
-make install          # Install Python dependencies
-make train            # Train models and save best to models/
-make serve            # Start FastAPI server on http://localhost:8000
+pip install -e ".[dev]"
+make test             # format + lint + tests with coverage
 ```
 
-### Frontend Setup
+Training and serving targets are stubs until phase 3/5:
+
 ```bash
-# From repository root
-flutter pub get       # Install Dart dependencies
-flutter run -d linux  # Run Flutter app on Linux desktop
+make train            # exits with a roadmap message
+make serve            # exits with a roadmap message
 ```
 
-### Development
+### Frontend
 ```bash
-# Backend
-cd ml_backend
-make format           # Format with black + ruff
-make lint             # Lint with ruff + mypy
-make test             # Run tests
-
-# Frontend (from repo root)
-dart format --set-exit-if-changed .
-flutter analyze
-flutter test
+# From repository root (scaffold only until phase 6)
+flutter pub get
+flutter run -d linux
 ```
 
-## API Endpoints
+## Data Layer Usage
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/predict` | Single prediction |
-| POST | `/predict_batch` | Batch predictions |
-| GET | `/health` | Health check |
-| GET | `/model_info` | Current model metadata |
-| GET | `/model_comparison` | All models' metrics |
-| POST | `/train` | Trigger full retrain |
+```python
+from ml_backend.data.explore import explore_dataset, save_exploration_plots
+from ml_backend.data.loader import load_california_housing, load_ames_housing
 
-### Prediction Request
-```json
-{
-  "MedInc": 8.3252,
-  "HouseAge": 41.0,
-  "AveRooms": 6.9841,
-  "AveBedrooms": 1.0238,
-  "Population": 322.0,
-  "AveOccup": 2.5556,
-  "Latitude": 37.88,
-  "Longitude": -122.23,
-  "ocean_proximity": "NEAR BAY"
-}
+X, y = load_california_housing()      # 8 numeric features + MedHouseVal
+X_ames, y_ames = load_ames_housing()  # 80 features + SalePrice
+
+stats = explore_dataset(X)
+save_exploration_plots(X.assign(MedHouseVal=y), target_col="MedHouseVal")
 ```
 
-### Prediction Response
-```json
-{
-  "prediction": 4.526,
-  "model": "RandomForestRegressor",
-  "model_version": "2026-10-22T10:30:00Z"
-}
-```
+Dataset caches live in `data/` at the repository root (git-ignored). Set
+`HOMEVALUE_ROOT` to override the root detected from the checkout.
 
 ## Project Structure
 
 ```
 HomeValue/
-├── lib/                          # Flutter app (MVVM + BLoC)
-│   ├── main.dart
-│   ├── core/
-│   │   ├── theme.dart
-│   │   ├── constants.dart
-│   │   ├── di.dart
-│   │   └── routing/app_router.dart
-│   └── features/
-│       ├── prediction/
-│       ├── comparison/
-│       └── settings/
+├── lib/                          # Flutter app (scaffold; MVVM + BLoC in phase 6)
 ├── test/                         # Flutter tests
-├── integration_test/             # Flutter integration tests
 ├── ml_backend/                   # Python ML backend
 │   ├── src/ml_backend/
 │   │   ├── config.py
-│   │   ├── data/
-│   │   ├── preprocessing/
-│   │   ├── models/
-│   │   └── api/
+│   │   └── data/                 # loaders + exploration (phase 1)
 │   ├── tests/
-│   ├── models/                   # Saved .joblib models
-│   ├── data/                     # Cached datasets
 │   ├── pyproject.toml
-│   └── Makefile
+│   ├── Makefile
+│   └── README.md
+├── .github/workflows/            # CI + tagged release
+├── data/                         # git-ignored dataset cache
+├── docs/followups.md
 ├── pubspec.yaml
 ├── analysis_options.yaml
 ├── CHANGELOG.md
@@ -141,12 +120,12 @@ HomeValue/
 
 ## Course Coverage (Weeks 02-05)
 
-| Week | Topics | Implementation |
-|------|--------|----------------|
-| 02-03 | End-to-end ML pipeline, data prep, model selection, CV, GridSearch | `ml_backend/src/ml_backend/data/`, `preprocessing/`, `models/baselines.py`, `models/evaluation.py` |
+| Week | Topics | Planned location |
+|------|--------|------------------|
+| 02-03 | End-to-end ML pipeline, data prep, model selection, CV, GridSearch | `ml_backend/src/ml_backend/data/`, `preprocessing/`, `models/` |
 | 04 | Polynomial Regression, Bias/Variance, Regularization (Ridge, Lasso, ElasticNet) | `ml_backend/src/ml_backend/models/regularized.py` |
-| 05 | Ensemble Learning (Voting, Bagging, Random Forests, Boosting, Stacking) | `ml_backend/src/ml_backend/models/ensembles.py`, `models/tuning.py` |
+| 05 | Ensemble Learning (Voting, Bagging, Random Forests, Boosting, Stacking) | `ml_backend/src/ml_backend/models/ensembles.py` |
 
 ## License
 
-MIT License — Course project for educational purposes.
+MIT License — course project for educational purposes. See [LICENSE](LICENSE).
