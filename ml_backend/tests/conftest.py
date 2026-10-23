@@ -3,11 +3,10 @@
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from ml_backend.preprocessing import build_preprocessing_pipeline
 
 
 @pytest.fixture
@@ -41,7 +40,7 @@ def sample_target():
 
 @pytest.fixture
 def trained_pipeline(sample_housing_data, sample_target):
-    """Create a simple trained pipeline for testing."""
+    """Create a trained pipeline backed by the real preprocessing builder."""
     numeric_features = [
         "MedInc",
         "HouseAge",
@@ -54,30 +53,15 @@ def trained_pipeline(sample_housing_data, sample_target):
     ]
     categorical_features = ["ocean_proximity"]
 
-    numeric_transformer = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
-
-    categorical_transformer = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("encoder", OneHotEncoder(drop="first", handle_unknown="ignore")),
-        ]
-    )
-
-    preprocessor = ColumnTransformer(
-        [
-            ("num", numeric_transformer, numeric_features),
-            ("cat", categorical_transformer, categorical_features),
-        ]
-    )
-
     pipeline = Pipeline(
         [
-            ("preprocessor", preprocessor),
+            (
+                "preprocessor",
+                build_preprocessing_pipeline(
+                    numeric_features=numeric_features,
+                    categorical_features=categorical_features,
+                ),
+            ),
             ("model", LinearRegression()),
         ]
     )
