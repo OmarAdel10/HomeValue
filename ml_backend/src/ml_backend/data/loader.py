@@ -1,5 +1,7 @@
 """Data loading utilities for HomeValue ML Backend."""
 
+import hashlib
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -7,86 +9,143 @@ from sklearn.datasets import fetch_california_housing, fetch_openml  # type: ign
 
 from ml_backend.config import config
 
+logger = logging.getLogger(__name__)
+
+CALIFORNIA_TARGET = "MedHouseVal"
+AMES_TARGET = "SalePrice"
+# Older versions of the OpenML record spell the target with an underscore.
+_LEGACY_AMES_TARGET = "Sale_Price"
+
+_MAX_ROWS = 1_000_000
+_MAX_COLUMNS = 500
+_CHECKSUM_SUFFIX = ".sha256"
+_FETCH_RETRIES = 3
+_FETCH_RETRY_DELAY = 1.0
+
 
 def _get_cache_path(name: str) -> Path:
-    """Get cache file path for dataset."""
+    """Get cache file path for a dataset."""
     return config.data_dir / f"{name}.parquet"
 
 
+def _get_checksum_path(name: str) -> Path:
+    """Get the path of the SHA-256 sidecar for a cached dataset."""
+    return config.data_dir / f"{name}.parquet{_CHECKSUM_SUFFIX}"
+
+
+def _sha256(path: Path) -> str:
+    """Compute the SHA-256 digest of a file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _save_to_cache(df: pd.DataFrame, name: str) -> None:
-    """Save DataFrame to parquet cache."""
+    """Save a DataFrame to the parquet cache with an integrity sidecar."""
     cache_path = _get_cache_path(name)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
     df.to_parquet(cache_path)
+    cache_path.chmod(0o640)
+
+    checksum_path = _get_checksum_path(name)
+    checksum_path.write_text(_sha256(cache_path), encoding="utf-8")
+    checksum_path.chmod(0o640)
+    logger.info("Cached dataset %s (%d rows, %d columns)", name, *df.shape)
 
 
 def _load_from_cache(name: str) -> pd.DataFrame | None:
-    """Load DataFrame from parquet cache if exists."""
+    """Load a cached DataFrame, discarding it if its checksum does not match."""
     cache_path = _get_cache_path(name)
-    if cache_path.exists():
-        return pd.read_parquet(cache_path)
-    return None
+    if not cache_path.exists():
+        logger.info("Cache miss for dataset %s", name)
+        return None
+
+    checksum_path = _get_checksum_path(name)
+    if checksum_path.exists():
+        expected = checksum_path.read_text(encoding="utf-8").strip()
+        actual = _sha256(cache_path)
+        if actual != expected:
+            logger.warning("Checksum mismatch for cached dataset %s; discarding it", name)
+            cache_path.unlink(missing_ok=True)
+            checksum_path.unlink(missing_ok=True)
+            return None
+
+    logger.info("Cache hit for dataset %s", name)
+    return pd.read_parquet(cache_path)
+
+
+def _validate_frame(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Reject empty or unreasonably large datasets before caching them."""
+    if df.empty:
+        raise ValueError(f"Dataset {name!r} is empty")
+    if len(df) > _MAX_ROWS or len(df.columns) > _MAX_COLUMNS:
+        raise ValueError(
+            f"Dataset {name!r} exceeds the safety limits "
+            f"({len(df)} rows, {len(df.columns)} columns)"
+        )
+    return df
+
+
+def _split_target(df: pd.DataFrame, target: str, name: str) -> tuple[pd.DataFrame, pd.Series]:
+    """Split a frame into features and a named target series."""
+    if target not in df.columns:
+        raise ValueError(f"Dataset {name!r} is missing the target column {target!r}")
+    X = df.drop(columns=[target])
+    y = df[target].rename(target)
+    return X, y
 
 
 def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
     """
-    Load California Housing dataset.
+    Load the California Housing dataset.
 
     Returns:
         Tuple of (features DataFrame, target Series)
     """
-    # Try cache first
     cached = _load_from_cache("california_housing")
     if cached is not None:
-        X = cached.drop(columns=["MedHouseVal"])
-        y = cached["MedHouseVal"]
-        return X, y
+        return _split_target(cached, CALIFORNIA_TARGET, "california_housing")
 
-    # Fetch from sklearn
-    data = fetch_california_housing(as_frame=True)
-    df = data.frame
-
-    # Cache for future use
+    logger.info("Fetching California Housing from scikit-learn")
+    data = fetch_california_housing(
+        as_frame=True, n_retries=_FETCH_RETRIES, delay=_FETCH_RETRY_DELAY
+    )
+    df = _validate_frame(data.frame, "california_housing")
     _save_to_cache(df, "california_housing")
-
-    X = df.drop(columns=["MedHouseVal"])
-    y = df["MedHouseVal"]
-    return X, y
+    return _split_target(df, CALIFORNIA_TARGET, "california_housing")
 
 
 def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
     """
-    Load Ames Housing dataset from OpenML.
+    Load the Ames Housing dataset from OpenML.
 
     Returns:
         Tuple of (features DataFrame, target Series)
     """
-    # Try cache first
     cached = _load_from_cache("ames_housing")
     if cached is not None:
-        # Check if target column exists in cached data
-        target_col = "Sale_Price" if "Sale_Price" in cached.columns else "SalePrice"
-        if target_col in cached.columns:
-            X = cached.drop(columns=[target_col])
-            y = cached[target_col]
-        else:
-            X = cached
-            y = pd.Series(dtype=float)
-        return X, y
+        if AMES_TARGET not in cached.columns and _LEGACY_AMES_TARGET in cached.columns:
+            cached = cached.rename(columns={_LEGACY_AMES_TARGET: AMES_TARGET})
+        return _split_target(cached, AMES_TARGET, "ames_housing")
 
-    # Fetch from OpenML
-    data = fetch_openml(name="ames_housing", version=1, as_frame=True)
-    df = data.frame
+    logger.info("Fetching Ames Housing from OpenML")
+    data = fetch_openml(
+        name="ames_housing",
+        version=1,
+        as_frame=True,
+        n_retries=_FETCH_RETRIES,
+        delay=_FETCH_RETRY_DELAY,
+    )
+    df = _validate_frame(data.frame, "ames_housing")
     target = data.target
+    if target is None:
+        raise ValueError("Ames Housing fetch returned no target column")
 
-    # Combine for caching
     df_with_target = df.copy()
-    df_with_target["Sale_Price"] = target
-
-    # Cache for future use
+    df_with_target[AMES_TARGET] = target.to_numpy()
     _save_to_cache(df_with_target, "ames_housing")
 
-    X = df
-    y = target
-    y.name = "Sale_Price"
-    return X, y
+    y = target.astype(float).rename(AMES_TARGET)
+    return df, y

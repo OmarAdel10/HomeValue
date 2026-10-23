@@ -1,12 +1,27 @@
 """Data exploration utilities for HomeValue ML Backend."""
 
+import re
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import pandas as pd
+import matplotlib
 
-from ml_backend.config import config
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import seaborn as sns  # noqa: E402
+
+from ml_backend.config import config  # noqa: E402
+
+_MAX_HEATMAP_FEATURES = 100
+
+
+def _safe_filename_part(value: str) -> str:
+    """Reduce an arbitrary column name to a safe filename fragment."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
+    return slug or "target"
 
 
 def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
@@ -19,11 +34,13 @@ def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
     Returns:
         Dictionary with exploration results
     """
-    result = {
+    result: dict[str, Any] = {
         "shape": df.shape,
         "dtypes": df.dtypes.astype(str).to_dict(),
         "missing_counts": df.isnull().sum().to_dict(),
-        "missing_percentages": (df.isnull().sum() / len(df) * 100).round(2).to_dict(),
+        "missing_percentages": (
+            (df.isnull().sum() / len(df) * 100).round(2).to_dict() if len(df) else {}
+        ),
         "describe": {},
         "correlations": {},
         "unique_counts": df.nunique().to_dict(),
@@ -40,14 +57,16 @@ def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
             result["correlations"] = corr_matrix.round(4).to_dict()
 
     # Describe categorical columns
-    categorical_cols = df.select_dtypes(include=["object", "category"]).columns
+    categorical_cols = df.select_dtypes(include=["object", "string", "category"]).columns
     if len(categorical_cols) > 0:
         cat_describe = {}
         for col in categorical_cols:
+            value_counts = df[col].value_counts()
+            modes = df[col].mode()
             cat_describe[col] = {
                 "unique": df[col].nunique(),
-                "top": df[col].mode().iloc[0] if not df[col].mode().empty else None,
-                "freq": df[col].value_counts().iloc[0] if not df[col].empty else 0,
+                "top": modes.iloc[0] if not modes.empty else None,
+                "freq": int(value_counts.iloc[0]) if not value_counts.empty else 0,
             }
         result["categorical_describe"] = cat_describe
 
@@ -56,7 +75,7 @@ def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
 
 def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> list[Path]:
     """
-    Save exploration plots to data/exploration/ directory.
+    Save exploration plots to data/exploration/.
 
     Args:
         df: DataFrame to plot
@@ -65,45 +84,39 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     Returns:
         List of saved plot file paths
     """
-    import matplotlib
+    exploration_dir = (config.data_dir / "exploration").resolve()
+    exploration_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-
-    exploration_dir = config.data_dir / "exploration"
-    exploration_dir.mkdir(parents=True, exist_ok=True)
-
-    saved_paths = []
+    saved_paths: list[Path] = []
 
     # Target distribution plot
     if target_col and target_col in df.columns:
+        path = exploration_dir / f"target_distribution_{_safe_filename_part(target_col)}.png"
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.histplot(data=df, x=target_col, kde=True, ax=ax)
         ax.set_title(f"Distribution of {target_col}")
-        path = exploration_dir / f"target_distribution_{target_col}.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         saved_paths.append(path)
 
-    # Correlation heatmap
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) > 1:
-        fig, ax = plt.subplots(figsize=(12, 10))
-        corr_matrix = df[numeric_cols].corr()
-        sns.heatmap(corr_matrix, annot=False, cmap="coolwarm", center=0, ax=ax)
-        ax.set_title("Feature Correlation Matrix")
+
+    # Correlation heatmap (skipped for very wide frames to bound memory use)
+    if 1 < len(numeric_cols) <= _MAX_HEATMAP_FEATURES:
         path = exploration_dir / "correlation_heatmap.png"
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sns.heatmap(df[numeric_cols].corr(), annot=False, cmap="coolwarm", center=0, ax=ax)
+        ax.set_title("Feature Correlation Matrix")
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         saved_paths.append(path)
 
     # Missing values heatmap
     if df.isnull().any().any():
+        path = exploration_dir / "missing_values_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax)
         ax.set_title("Missing Values Pattern")
-        path = exploration_dir / "missing_values_heatmap.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         saved_paths.append(path)

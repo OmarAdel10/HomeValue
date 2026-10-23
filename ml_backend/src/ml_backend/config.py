@@ -4,20 +4,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _find_repo_root(start: Path) -> Path:
+    """Locate the repository root by walking up to the Flutter/pubspec marker."""
+    for candidate in (start, *start.parents):
+        if (candidate / "pubspec.yaml").is_file() and (candidate / "ml_backend").is_dir():
+            return candidate
+    raise RuntimeError(f"Could not locate the HomeValue repository root above {start}")
+
+
+_REPO_ROOT = _find_repo_root(Path(__file__).resolve())
+
+
 @dataclass
 class Config:
     """Central configuration for ML pipeline."""
 
     # Paths
-    project_root: Path = field(default_factory=lambda: Path(__file__).parents[3])
-    data_dir: Path = field(default_factory=lambda: Path(__file__).parents[3] / "data")
-    models_dir: Path = field(default_factory=lambda: Path(__file__).parents[3] / "models")
-    logs_dir: Path = field(default_factory=lambda: Path(__file__).parents[3] / "logs")
+    project_root: Path = field(default_factory=lambda: _REPO_ROOT)
+    data_dir: Path = field(default_factory=lambda: _REPO_ROOT / "data")
+    models_dir: Path = field(default_factory=lambda: _REPO_ROOT / "models")
+    logs_dir: Path = field(default_factory=lambda: _REPO_ROOT / "logs")
 
     # Data
     test_size: float = 0.2
     random_state: int = 42
-    stratify_col: str = "income_cat"  # for California housing
 
     # Cross-validation
     cv_folds: int = 5
@@ -51,9 +61,8 @@ class Config:
 
     def __post_init__(self) -> None:
         """Create directories if they don't exist."""
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.models_dir.mkdir(parents=True, exist_ok=True)
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        for directory in (self.data_dir, self.models_dir, self.logs_dir):
+            directory.mkdir(parents=True, exist_ok=True, mode=0o750)
 
 
 config = Config()
