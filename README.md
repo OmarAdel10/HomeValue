@@ -96,6 +96,12 @@ save_exploration_plots(X.assign(MedHouseVal=y), target_col="MedHouseVal")
 Dataset caches live in `data/` at the repository root (git-ignored). Set
 `HOMEVALUE_ROOT` to override the root detected from the checkout.
 
+Plotting is optional and requires the `viz` extra:
+
+```bash
+pip install -e "ml_backend[viz]"
+```
+
 ## Project Structure
 
 ```
