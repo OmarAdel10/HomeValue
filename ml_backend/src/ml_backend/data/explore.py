@@ -10,6 +10,7 @@ import pandas as pd
 from ml_backend.config import config
 
 _MAX_HEATMAP_FEATURES = 100
+_MAX_HEATMAP_ROWS = 5_000
 _MAX_SLUG_LENGTH = 80
 
 
@@ -125,12 +126,12 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
             plt.close(fig)
         saved_paths.append(path)
 
-    # Missing values heatmap
+    # Missing values heatmap (row-capped to bound rendering memory)
     if df.isnull().any().any():
         path = exploration_dir / "missing_values_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 8))
         try:
-            sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax)
+            sns.heatmap(df.isnull().iloc[:_MAX_HEATMAP_ROWS], cbar=False, yticklabels=False, ax=ax)
             ax.set_title("Missing Values Pattern")
             fig.savefig(path, dpi=150, bbox_inches="tight")
         finally:

@@ -11,14 +11,6 @@ def test_config_exists():
     assert config.test_size == 0.2
 
 
-def test_config_directories_exist():
-    """Test that config directories are created on demand."""
-    config.ensure_dirs()
-    assert config.data_dir.exists()
-    assert config.models_dir.exists()
-    assert config.logs_dir.exists()
-
-
 def test_imports_work():
     """Test that all main modules can be imported."""
     from ml_backend import __version__

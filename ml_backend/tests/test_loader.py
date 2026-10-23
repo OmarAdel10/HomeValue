@@ -1,5 +1,6 @@
 """Tests for the data loading module."""
 
+import hashlib
 import os
 import stat
 from types import SimpleNamespace
@@ -13,9 +14,12 @@ from ml_backend.data import loader
 
 @pytest.fixture
 def cache_dir(tmp_path, monkeypatch):
-    """Redirect the dataset cache into a temporary directory."""
-    monkeypatch.setattr(config, "data_dir", tmp_path)
-    return tmp_path
+    """Redirect every dataset directory into a temporary directory."""
+    monkeypatch.setattr(config, "data_dir", tmp_path / "data")
+    monkeypatch.setattr(config, "models_dir", tmp_path / "models")
+    monkeypatch.setattr(config, "logs_dir", tmp_path / "logs")
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    return config.data_dir
 
 
 def _california_frame(n_rows: int = 10, include_target: bool = True) -> pd.DataFrame:
@@ -51,9 +55,20 @@ def _ames_target(frame: pd.DataFrame) -> pd.Series:
     return frame["Sale_Price"].astype(float).rename("Sale_Price")
 
 
+def _california_fetch(frame: pd.DataFrame):
+    return lambda **kwargs: SimpleNamespace(frame=frame)
+
+
 def test_get_cache_path_uses_parquet_suffix(cache_dir):
     assert loader._get_cache_path("demo") == cache_dir / "demo.parquet"
     assert loader._get_checksum_path("demo") == cache_dir / "demo.parquet.sha256"
+
+
+def test_sha256_matches_known_vector(tmp_path):
+    path = tmp_path / "vector.bin"
+    path.write_bytes(b"abc")
+
+    assert loader._sha256(path) == hashlib.sha256(b"abc").hexdigest()
 
 
 def test_cache_roundtrip_writes_checksum_and_restricted_permissions(cache_dir):
@@ -65,7 +80,38 @@ def test_cache_roundtrip_writes_checksum_and_restricted_permissions(cache_dir):
     checksum_path = cache_dir / "demo.parquet.sha256"
     assert stat.S_IMODE(cache_path.stat().st_mode) == 0o640
     assert stat.S_IMODE(checksum_path.stat().st_mode) == 0o640
+    assert (
+        checksum_path.read_text(encoding="utf-8")
+        == hashlib.sha256(cache_path.read_bytes()).hexdigest()
+    )
     pd.testing.assert_frame_equal(loader._load_from_cache("demo"), frame)
+
+
+def test_save_to_cache_overwrites_previous_entry(cache_dir):
+    loader._save_to_cache(_california_frame(3), "demo")
+    replacement = _california_frame(4)
+    loader._save_to_cache(replacement, "demo")
+
+    pd.testing.assert_frame_equal(loader._load_from_cache("demo"), replacement)
+    assert (cache_dir / "demo.parquet.sha256").read_text(encoding="utf-8") == (
+        loader._sha256(cache_dir / "demo.parquet")
+    )
+
+
+def test_atomic_write_preserves_target_and_cleans_up_on_failure(cache_dir):
+    target = cache_dir / "nested" / "stable.bin"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"original")
+
+    def failing_writer(path):
+        path.write_bytes(b"partial")
+        raise RuntimeError("writer failed")
+
+    with pytest.raises(RuntimeError, match="writer failed"):
+        loader._atomic_write(target, failing_writer)
+
+    assert target.read_bytes() == b"original"
+    assert list(target.parent.glob(".*.tmp")) == []
 
 
 def test_load_from_cache_returns_none_when_missing(cache_dir):
@@ -73,8 +119,7 @@ def test_load_from_cache_returns_none_when_missing(cache_dir):
 
 
 def test_load_from_cache_discards_tampered_file(cache_dir):
-    frame = _california_frame()
-    loader._save_to_cache(frame, "demo")
+    loader._save_to_cache(_california_frame(), "demo")
     (cache_dir / "demo.parquet").write_bytes(b"not a parquet file")
 
     assert loader._load_from_cache("demo") is None
@@ -83,8 +128,7 @@ def test_load_from_cache_discards_tampered_file(cache_dir):
 
 
 def test_load_from_cache_discards_unverified_legacy_cache(cache_dir):
-    frame = _california_frame()
-    frame.to_parquet(cache_dir / "legacy.parquet")
+    _california_frame().to_parquet(cache_dir / "legacy.parquet")
 
     assert loader._load_from_cache("legacy") is None
     assert not (cache_dir / "legacy.parquet").exists()
@@ -97,6 +141,29 @@ def test_load_from_cache_discards_corrupt_parquet_with_matching_checksum(cache_d
 
     assert loader._load_from_cache("corrupt") is None
     assert not cache_path.exists()
+    assert not (cache_dir / "corrupt.parquet.sha256").exists()
+
+
+def test_load_from_cache_tolerates_unreadable_checksum(cache_dir):
+    loader._save_to_cache(_california_frame(), "demo")
+    checksum_path = cache_dir / "demo.parquet.sha256"
+    checksum_path.unlink()
+    checksum_path.mkdir()
+
+    assert loader._load_from_cache("demo") is None
+
+
+def test_load_from_cache_tolerates_directory_in_place_of_parquet(cache_dir):
+    (cache_dir / "directory.parquet").mkdir()
+
+    assert loader._load_from_cache("directory") is None
+
+
+def test_load_from_cache_rejects_empty_checksum(cache_dir):
+    loader._save_to_cache(_california_frame(), "demo")
+    (cache_dir / "demo.parquet.sha256").write_text("", encoding="utf-8")
+
+    assert loader._load_from_cache("demo") is None
 
 
 def test_load_california_housing_fetches_then_serves_from_cache(cache_dir, monkeypatch):
@@ -128,11 +195,55 @@ def test_load_california_housing_fetches_then_serves_from_cache(cache_dir, monke
     pd.testing.assert_series_equal(y_cached, y)
 
 
-def test_load_california_housing_rejects_cache_without_target(cache_dir):
+def test_load_california_housing_recovers_from_invalid_cache(cache_dir, monkeypatch):
     loader._save_to_cache(_california_frame(include_target=False), "california_housing")
+    replacement = _california_frame()
+    monkeypatch.setattr(loader, "fetch_california_housing", _california_fetch(replacement))
+
+    X, y = loader.load_california_housing()
+
+    assert "MedHouseVal" not in X.columns
+    assert y.name == "MedHouseVal"
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(cache_dir / "california_housing.parquet"), replacement
+    )
+
+
+def test_load_california_housing_does_not_cache_invalid_fetch(cache_dir, monkeypatch):
+    monkeypatch.setattr(
+        loader,
+        "fetch_california_housing",
+        _california_fetch(_california_frame(include_target=False)),
+    )
 
     with pytest.raises(ValueError, match="MedHouseVal"):
         loader.load_california_housing()
+
+    assert not (cache_dir / "california_housing.parquet").exists()
+
+
+def test_load_california_housing_rejects_non_numeric_cached_target(cache_dir, monkeypatch):
+    bad = _california_frame()
+    bad["MedHouseVal"] = ["high"] * len(bad)
+    loader._save_to_cache(bad, "california_housing")
+    monkeypatch.setattr(loader, "fetch_california_housing", _california_fetch(bad))
+
+    with pytest.raises(ValueError, match="non-numeric"):
+        loader.load_california_housing()
+
+
+def test_load_california_housing_rejects_dropped_target_on_refetch(cache_dir, monkeypatch):
+    loader._save_to_cache(_california_frame(include_target=False), "california_housing")
+    monkeypatch.setattr(
+        loader,
+        "fetch_california_housing",
+        _california_fetch(_california_frame(include_target=False)),
+    )
+
+    with pytest.raises(ValueError, match="MedHouseVal"):
+        loader.load_california_housing()
+
+    assert not (cache_dir / "california_housing.parquet").exists()
 
 
 def test_load_ames_housing_drops_all_target_aliases(cache_dir, monkeypatch):
@@ -166,9 +277,8 @@ def test_load_ames_housing_drops_all_target_aliases(cache_dir, monkeypatch):
     pd.testing.assert_series_equal(y_cached, y)
 
 
-def test_load_ames_housing_renames_legacy_cache_target(cache_dir):
-    frame = _ames_frame()
-    loader._save_to_cache(frame, "ames_housing")
+def test_load_ames_housing_renames_openml_cache_target(cache_dir):
+    loader._save_to_cache(_ames_frame(), "ames_housing")
 
     X, y = loader.load_ames_housing()
 
@@ -189,11 +299,36 @@ def test_load_ames_housing_drops_duplicate_target_aliases(cache_dir):
     assert "SalePrice" not in X.columns
 
 
-def test_load_ames_housing_rejects_cache_without_target(cache_dir):
+def test_load_ames_housing_recovers_from_invalid_cache(cache_dir, monkeypatch):
     loader._save_to_cache(pd.DataFrame({"MSSubClass": [60], "LotArea": [8000]}), "ames_housing")
+    replacement = _ames_frame()
+    monkeypatch.setattr(
+        loader,
+        "fetch_openml",
+        lambda **kwargs: SimpleNamespace(frame=replacement, target=_ames_target(replacement)),
+    )
 
-    with pytest.raises(ValueError, match="SalePrice"):
-        loader.load_ames_housing()
+    X, y = loader.load_ames_housing()
+
+    assert y.name == "SalePrice"
+    assert "Sale_Price" not in X.columns
+
+
+def test_load_ames_housing_recovers_from_non_numeric_cache(cache_dir, monkeypatch):
+    frame = _ames_frame()
+    frame["SalePrice"] = ["high"] * len(frame)
+    loader._save_to_cache(frame, "ames_housing")
+    good = _ames_frame()
+    monkeypatch.setattr(
+        loader,
+        "fetch_openml",
+        lambda **kwargs: SimpleNamespace(frame=good, target=_ames_target(good)),
+    )
+
+    X, y = loader.load_ames_housing()
+
+    assert y.name == "SalePrice"
+    assert "SalePrice" not in X.columns
 
 
 def test_load_ames_housing_rejects_fetch_without_target(cache_dir, monkeypatch):
@@ -204,6 +339,19 @@ def test_load_ames_housing_rejects_fetch_without_target(cache_dir, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="no target"):
+        loader.load_ames_housing()
+    assert not (cache_dir / "ames_housing.parquet").exists()
+
+
+def test_load_ames_housing_rejects_non_numeric_fetch_target(cache_dir, monkeypatch):
+    frame = _ames_frame()
+    monkeypatch.setattr(
+        loader,
+        "fetch_openml",
+        lambda **kwargs: SimpleNamespace(frame=frame, target=pd.Series(["high"] * len(frame))),
+    )
+
+    with pytest.raises(ValueError):
         loader.load_ames_housing()
     assert not (cache_dir / "ames_housing.parquet").exists()
 
@@ -230,26 +378,26 @@ def test_validate_frame_rejects_oversized_column_count():
         loader._validate_frame(frame, "wide")
 
 
+def test_validate_frame_accepts_exact_limits(monkeypatch):
+    monkeypatch.setattr(loader, "_MAX_ROWS", 2)
+    monkeypatch.setattr(loader, "_MAX_COLUMNS", 2)
+    frame = pd.DataFrame({"a": [1.0, 2.0], "b": [3.0, 4.0]})
+
+    assert loader._validate_frame(frame, "exact") is frame
+
+
 def test_split_target_rejects_non_numeric_target():
     frame = pd.DataFrame({"feature": [1.0], "target": ["high"]})
     with pytest.raises(ValueError, match="non-numeric"):
         loader._split_target(frame, "target", "demo")
 
 
-def test_load_california_housing_rejects_non_numeric_cached_target(cache_dir):
-    frame = _california_frame()
-    frame["MedHouseVal"] = ["high"] * len(frame)
-    loader._save_to_cache(frame, "california_housing")
-
-    with pytest.raises(ValueError, match="non-numeric"):
-        loader.load_california_housing()
-
-
 @pytest.mark.integration
 @pytest.mark.skipif(
     os.getenv("RUN_INTEGRATION") != "1", reason="set RUN_INTEGRATION=1 to hit the network"
 )
-def test_load_california_housing_real_dataset():
+def test_load_california_housing_real_dataset(cache_dir):
     X, y = loader.load_california_housing()
     assert X.shape[0] == y.shape[0] > 0
     assert y.name == "MedHouseVal"
+    assert "MedHouseVal" not in X.columns

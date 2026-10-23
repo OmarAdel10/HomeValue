@@ -1,8 +1,11 @@
 """Configuration for HomeValue ML Backend."""
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _REPO_MARKERS = ("pubspec.yaml", "ml_backend")
 
@@ -10,7 +13,7 @@ _REPO_MARKERS = ("pubspec.yaml", "ml_backend")
 def _find_repo_root(start: Path) -> Path:
     """Locate the repository root by walking up to the project markers."""
     for candidate in (start, *start.parents):
-        if all((candidate / marker).exists() for marker in _REPO_MARKERS):
+        if (candidate / "pubspec.yaml").is_file() and (candidate / "ml_backend").is_dir():
             return candidate
     raise RuntimeError(f"Could not locate the HomeValue repository root above {start}")
 
@@ -23,6 +26,10 @@ def _default_project_root() -> Path:
     try:
         return _find_repo_root(Path(__file__).resolve())
     except RuntimeError:
+        logger.warning(
+            "Could not locate the HomeValue repository root; falling back to the "
+            "current directory. Set HOMEVALUE_ROOT to override it."
+        )
         return Path.cwd()
 
 

@@ -16,12 +16,12 @@ def plots_dir(tmp_path, monkeypatch):
 
 
 def test_explore_returns_stats_dict():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     df = pd.DataFrame(
         {
-            "numeric_1": np.random.randn(100),
-            "numeric_2": np.random.randn(100),
-            "categorical": np.random.choice(["A", "B", "C"], 100),
+            "numeric_1": rng.standard_normal(100),
+            "numeric_2": rng.standard_normal(100),
+            "categorical": rng.choice(["A", "B", "C"], 100),
         }
     )
 
@@ -185,3 +185,34 @@ def test_save_exploration_plots_handles_categorical_target(plots_dir):
     paths = explore.save_exploration_plots(df, target_col="cat")
 
     assert "target_distribution_cat.png" in [path.name for path in paths]
+
+
+def test_explore_describes_pandas_string_dtype():
+    df = pd.DataFrame({"s": pd.Series(["a", "b", "a"], dtype="string")})
+
+    result = explore.explore_dataset(df)
+
+    assert result["categorical_describe"]["s"] == {"unique": 2, "top": "a", "freq": 2}
+
+
+def test_explore_constant_column_correlation_is_nan():
+    df = pd.DataFrame({"a": [1.0, 1.0, 1.0], "b": [1.0, 2.0, 3.0]})
+
+    result = explore.explore_dataset(df)
+
+    assert np.isnan(result["correlations"]["a"]["b"])
+
+
+def test_save_exploration_plots_closes_figure_on_failure(plots_dir, monkeypatch):
+    import matplotlib.pyplot as plt
+
+    def failing_corr(*args, **kwargs):
+        raise RuntimeError("correlation failed")
+
+    monkeypatch.setattr(pd.DataFrame, "corr", failing_corr)
+    df = pd.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]})
+
+    with pytest.raises(RuntimeError, match="correlation failed"):
+        explore.save_exploration_plots(df)
+
+    assert plt.get_fignums() == []

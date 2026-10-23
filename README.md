@@ -35,8 +35,9 @@ graph TD
 ## Implemented in Phase 1
 
 - **Data loading**: California Housing (`MedHouseVal`) and Ames Housing (`SalePrice`).
-- **Verified cache**: parquet files with a SHA-256 sidecar; unverified or tampered
-  caches are discarded and refetched.
+- **Verified cache**: parquet files with a SHA-256 sidecar that detects accidental
+  corruption; unverified or corrupted caches are discarded and refetched. The sidecar
+  is local integrity only and is not a tamper-proof trust anchor.
 - **Exploration**: dataset statistics (shape, dtypes, missing values, correlations,
   categorical summaries) and optional distribution/correlation/missing-value plots.
 - **CI**: formatting, linting, typing, tests, Linux desktop build on every branch.
@@ -62,7 +63,7 @@ graph TD
 ```bash
 cd ml_backend
 pip install -e ".[dev]"
-make test             # format + lint + tests with coverage
+make test             # pytest with branch coverage
 ```
 
 Training and serving targets are stubs until phase 3/5:

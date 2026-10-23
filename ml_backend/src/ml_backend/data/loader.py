@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 CALIFORNIA_TARGET = "MedHouseVal"
 AMES_TARGET = "SalePrice"
-# The OpenML record spells the target with an underscore, both as a frame column
-# and as the separate target series.
-_LEGACY_AMES_TARGET = "Sale_Price"
+# The current OpenML record spells the target with an underscore, both as a frame
+# column and as the separate target series.
+_OPENML_AMES_TARGET = "Sale_Price"
 
 _MAX_ROWS = 1_000_000
 _MAX_COLUMNS = 500
@@ -75,9 +75,12 @@ def _save_to_cache(df: pd.DataFrame, name: str) -> None:
 
 
 def _discard_cache(name: str) -> None:
-    """Remove a cache entry and its checksum sidecar."""
-    _get_cache_path(name).unlink(missing_ok=True)
-    _get_checksum_path(name).unlink(missing_ok=True)
+    """Best-effort removal of a cache entry and its checksum sidecar."""
+    for path in (_get_cache_path(name), _get_checksum_path(name)):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove cache file %s", path)
 
 
 def _load_from_cache(name: str) -> pd.DataFrame | None:
@@ -93,8 +96,15 @@ def _load_from_cache(name: str) -> pd.DataFrame | None:
         _discard_cache(name)
         return None
 
-    expected = checksum_path.read_text(encoding="utf-8").strip()
-    if _sha256(cache_path) != expected:
+    try:
+        expected = checksum_path.read_text(encoding="utf-8").strip()
+        actual = _sha256(cache_path)
+    except OSError:
+        logger.exception("Unreadable checksum for cached dataset %s; discarding it", name)
+        _discard_cache(name)
+        return None
+
+    if actual != expected:
         logger.warning("Checksum mismatch for cached dataset %s; discarding it", name)
         _discard_cache(name)
         return None
@@ -137,12 +147,18 @@ def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
     """
     Load the California Housing dataset.
 
+    The target is capped at 5.00001 by the source dataset.
+
     Returns:
         Tuple of (features DataFrame, target Series)
     """
     cached = _load_from_cache("california_housing")
     if cached is not None:
-        return _split_target(cached, CALIFORNIA_TARGET, "california_housing")
+        try:
+            return _split_target(cached, CALIFORNIA_TARGET, "california_housing")
+        except ValueError:
+            logger.exception("Invalid California cache; discarding it")
+            _discard_cache("california_housing")
 
     logger.info("Fetching California Housing from scikit-learn")
     config.ensure_dirs()
@@ -153,8 +169,9 @@ def load_california_housing() -> tuple[pd.DataFrame, pd.Series]:
         delay=_FETCH_RETRY_DELAY,
     )
     df = _validate_frame(data.frame, "california_housing")
+    X, y = _split_target(df, CALIFORNIA_TARGET, "california_housing")
     _save_to_cache(df, "california_housing")
-    return _split_target(df, CALIFORNIA_TARGET, "california_housing")
+    return X, y
 
 
 def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
@@ -166,10 +183,14 @@ def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
     """
     cached = _load_from_cache("ames_housing")
     if cached is not None:
-        if AMES_TARGET not in cached.columns and _LEGACY_AMES_TARGET in cached.columns:
-            cached = cached.rename(columns={_LEGACY_AMES_TARGET: AMES_TARGET})
-        cached = cached.drop(columns=[_LEGACY_AMES_TARGET], errors="ignore")
-        return _split_target(cached, AMES_TARGET, "ames_housing")
+        if AMES_TARGET not in cached.columns and _OPENML_AMES_TARGET in cached.columns:
+            cached = cached.rename(columns={_OPENML_AMES_TARGET: AMES_TARGET})
+        cached = cached.drop(columns=[_OPENML_AMES_TARGET], errors="ignore")
+        try:
+            return _split_target(cached, AMES_TARGET, "ames_housing")
+        except ValueError:
+            logger.exception("Invalid Ames cache; discarding it")
+            _discard_cache("ames_housing")
 
     logger.info("Fetching Ames Housing from OpenML")
     config.ensure_dirs()
@@ -185,13 +206,13 @@ def load_ames_housing() -> tuple[pd.DataFrame, pd.Series]:
         raise ValueError("Ames Housing fetch returned no target column")
 
     df = _validate_frame(data.frame, "ames_housing")
+    target = data.target.astype(float).rename(AMES_TARGET)
     # OpenML's frame embeds the target under the legacy name; drop every target
     # alias so it can never leak into the feature matrix.
     features = df.drop(
-        columns=[AMES_TARGET, _LEGACY_AMES_TARGET],
+        columns=[AMES_TARGET, _OPENML_AMES_TARGET],
         errors="ignore",
     )
-    target = data.target.astype(float).rename(AMES_TARGET)
 
     df_with_target = features.copy()
     df_with_target[AMES_TARGET] = target.to_numpy()
