@@ -44,9 +44,9 @@ htmlcov/
 dmypy.json
 
 # Project specific
-data/
-models/
-logs/
+/data/
+/models/
+/logs/
 .env
 .env.local
 
