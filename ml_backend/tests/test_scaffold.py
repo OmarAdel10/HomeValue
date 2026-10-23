@@ -1,6 +1,5 @@
 """Scaffold tests to verify project structure."""
 
-import pytest
 from ml_backend.config import config
 
 
@@ -22,4 +21,12 @@ def test_config_directories_exist():
 def test_imports_work():
     """Test that all main modules can be imported."""
     from ml_backend import __version__
+
     assert __version__ == "0.1.0"
+
+
+def test_sample_pipeline_trains_and_predicts(trained_pipeline, sample_housing_data):
+    """Test that the shared pipeline fixture is usable by later phases."""
+    predictions = trained_pipeline.predict(sample_housing_data)
+
+    assert len(predictions) == len(sample_housing_data)
