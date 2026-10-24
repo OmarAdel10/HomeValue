@@ -62,6 +62,18 @@ class Config:
     )
     elasticnet_alphas: list[float] = field(default_factory=lambda: [0.001, 0.01, 0.1, 1.0])
 
+    # Lasso/ElasticNet convergence
+    lasso_max_iter: int = 10000
+    elasticnet_max_iter: int = 10000
+
+    # Decision Tree
+    dt_max_depth: int = 10
+    dt_min_samples_split: int = 5
+    dt_min_samples_leaf: int = 2
+
+    # Cross-validation resources
+    cv_n_jobs: int = -1
+
     # Random Forest
     rf_n_estimators: int = 200
     rf_max_features: str = "sqrt"
@@ -86,6 +98,38 @@ class Config:
             default_path = _DEFAULT_ROOT / name
             if getattr(self, f"{name}_dir") == default_path:
                 setattr(self, f"{name}_dir", self.project_root / name)
+
+        # Validate hyperparameter bounds
+        if not 0 < self.test_size < 1:
+            raise ValueError("test_size must be strictly between 0 and 1")
+        if self.cv_folds < 2 or self.cv_folds > 10:
+            raise ValueError("cv_folds must be between 2 and 10")
+        if len(self.ridge_alphas) == 0 or len(self.ridge_alphas) > 100:
+            raise ValueError("ridge_alphas must have 1-100 values")
+        if any(a <= 0 for a in self.ridge_alphas):
+            raise ValueError("ridge_alphas must be positive")
+        if len(self.lasso_alphas) == 0 or len(self.lasso_alphas) > 100:
+            raise ValueError("lasso_alphas must have 1-100 values")
+        if any(a <= 0 for a in self.lasso_alphas):
+            raise ValueError("lasso_alphas must be positive")
+        if len(self.elasticnet_alphas) == 0 or len(self.elasticnet_alphas) > 100:
+            raise ValueError("elasticnet_alphas must have 1-100 values")
+        if any(a <= 0 for a in self.elasticnet_alphas):
+            raise ValueError("elasticnet_alphas must be positive")
+        if len(self.elasticnet_l1_ratios) == 0 or len(self.elasticnet_l1_ratios) > 100:
+            raise ValueError("elasticnet_l1_ratios must have 1-100 values")
+        if any(not 0 <= r <= 1 for r in self.elasticnet_l1_ratios):
+            raise ValueError("elasticnet_l1_ratios must be in [0, 1]")
+        if self.lasso_max_iter < 1:
+            raise ValueError("lasso_max_iter must be positive")
+        if self.elasticnet_max_iter < 1:
+            raise ValueError("elasticnet_max_iter must be positive")
+        if self.dt_max_depth < 1:
+            raise ValueError("dt_max_depth must be positive")
+        if self.dt_min_samples_split < 2:
+            raise ValueError("dt_min_samples_split must be at least 2")
+        if self.dt_min_samples_leaf < 1:
+            raise ValueError("dt_min_samples_leaf must be positive")
 
     def ensure_dirs(self) -> None:
         """Create the configured working directories."""

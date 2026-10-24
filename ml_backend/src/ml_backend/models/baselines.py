@@ -1,27 +1,12 @@
 """Baseline model training for HomeValue."""
 
-from typing import Any
-
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin  # type: ignore[import-untyped]
 from sklearn.linear_model import LinearRegression  # type: ignore[import-untyped]
 from sklearn.pipeline import Pipeline  # type: ignore[import-untyped]
 from sklearn.tree import DecisionTreeRegressor  # type: ignore[import-untyped]
 
 from ml_backend.config import Config
-
-
-class _IdentityPreprocessor(TransformerMixin, BaseEstimator):
-    """Pass-through preprocessor for already-transformed data."""
-
-    def fit(self, X: Any, y: Any = None) -> "_IdentityPreprocessor":
-        return self
-
-    def transform(self, X: Any) -> Any:
-        return X
-
-    def get_feature_names_out(self, input_features: Any = None) -> Any:
-        return input_features
+from ml_backend.models._identity import _IdentityPreprocessor
 
 
 def train_baselines(
@@ -33,8 +18,14 @@ def train_baselines(
 
     Returns a dict of fitted Pipelines keyed by model name.
     """
-    if len(X) == 0 or len(y) == 0:
+    if X.shape[0] == 0 or y.shape[0] == 0:
         raise ValueError("Training data must not be empty")
+    if X.shape[0] != y.shape[0]:
+        raise ValueError("X and y must have the same number of samples")
+    if X.shape[1] == 0:
+        raise ValueError("X must have at least one feature")
+    if not np.isfinite(X).all() or not np.isfinite(y).all():
+        raise ValueError("Training data must contain only finite values")
 
     baselines: dict[str, Pipeline] = {}
 
@@ -49,7 +40,15 @@ def train_baselines(
     dt_pipeline = Pipeline(
         [
             ("preprocessor", _IdentityPreprocessor()),
-            ("model", DecisionTreeRegressor(random_state=config.random_state)),
+            (
+                "model",
+                DecisionTreeRegressor(
+                    random_state=config.random_state,
+                    max_depth=config.dt_max_depth,
+                    min_samples_split=config.dt_min_samples_split,
+                    min_samples_leaf=config.dt_min_samples_leaf,
+                ),
+            ),
         ]
     )
     dt_pipeline.fit(X, y)

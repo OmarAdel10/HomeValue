@@ -32,9 +32,10 @@ def cv_scores(
     y: np.ndarray,
     cv: int = 5,
     scoring: str = "neg_root_mean_squared_error",
+    n_jobs: int = -1,
 ) -> dict[str, float]:
     """Run cross-validation and return mean and std of scores."""
-    scores = cross_val_score(estimator, X, y, cv=cv, scoring=scoring, n_jobs=-1)
+    scores = cross_val_score(estimator, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs)
     return {"mean": float(np.mean(scores)), "std": float(np.std(scores))}
 
 

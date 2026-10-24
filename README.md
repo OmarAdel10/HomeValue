@@ -6,11 +6,7 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 2 (preprocessing).** The ML data layer (California + Ames loaders,
-> verified parquet cache, exploratory analysis), the preprocessing pipeline (median /
-> most-frequent imputation, scaling, one-hot encoding, Week 02 ratio features), and
-> reproducible train/test splitting are implemented. Models, the FastAPI service, and
-> the Flutter UI are roadmap items below and are not available yet.
+> **Status — Phase 3 (models).** The ML data layer, preprocessing pipeline, baseline models (LinearRegression, DecisionTreeRegressor), regularized models (RidgeCV, LassoCV, ElasticNetCV), evaluation metrics (RMSE/MAE/R² + 5-fold CV), and config-driven hyperparameters are implemented. Ensembles, hyperparameter tuning, the FastAPI service, and the Flutter UI are roadmap items below.
 
 ## Architecture
 
@@ -33,7 +29,7 @@ graph TD
     end
 ```
 
-## Implemented in Phases 1-2
+## Implemented in Phases 1-3
 
 - **Data loading**: California Housing (`MedHouseVal`) and Ames Housing (`SalePrice`).
 - **Verified cache**: parquet files with a SHA-256 sidecar that detects accidental
@@ -46,6 +42,9 @@ graph TD
   non-redundant California ratio features.
 - **Data split**: reproducible, config-driven train/test split with index and size
   validation.
+- **Baseline models**: `LinearRegression`, `DecisionTreeRegressor` (with configurable depth/leaf limits) wrapped in inference-ready pipelines.
+- **Regularized models**: `RidgeCV`, `LassoCV`, `ElasticNetCV` with config-driven alpha/l1_ratio grids and convergence monitoring.
+- **Evaluation**: RMSE, MAE, R² metrics and 5-fold cross-validation with configurable scoring.
 - **CI**: formatting, linting, typing, tests, Linux desktop build on every branch.
 - **CD**: tag-driven release on `master`, builds the Python wheel and Linux bundle.
 
@@ -135,6 +134,31 @@ bundled dataset stores per-household averages, the pipeline derives
 `rooms_per_person`, `bedrooms_per_room`, and `households` instead of duplicating
 `AveRooms`/`AveOccup`. Category levels are not dropped, so an unseen category
 encodes as an all-zero block rather than colliding with a reference level.
+
+## Model Training Usage
+
+```python
+from ml_backend.config import Config
+from ml_backend.models import train_baselines, train_regularized, cross_validate_model
+
+config = Config()
+baselines = train_baselines(X_train_encoded, y_train, config)
+regularized = train_regularized(X_train_encoded, y_train, config)
+
+# Evaluate on test set
+from ml_backend.models import evaluate_model
+for name, pipeline in {**baselines, **regularized}.items():
+    metrics = evaluate_model(pipeline, X_test_encoded, y_test)
+    print(f"{name}: RMSE={metrics['rmse']:.3f}, MAE={metrics['mae']:.3f}, R²={metrics['r2']:.3f}")
+
+# Cross-validation
+cv_results = cross_validate_model(regularized["RidgeCV"], X_train_encoded, y_train, cv=5)
+print(f"RidgeCV CV RMSE: {cv_results['cv_rmse_mean']:.3f} ± {cv_results['cv_rmse_std']:.3f}")
+```
+
+Model training uses the same preprocessing pipeline for inference-time compatibility.
+Decision trees have configurable depth/leaf limits to prevent overfitting.
+LassoCV and ElasticNetCV include convergence monitoring via configurable max_iter.
 
 ## Project Structure
 

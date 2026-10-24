@@ -276,3 +276,129 @@ def test_identity_preprocessor_get_feature_names_out():
     prep2 = _IdentityPreprocessor2().fit(np.array([[1, 2], [3, 4]]))
     assert prep2.get_feature_names_out() is None
     assert prep2.get_feature_names_out(["a", "b"]) == ["a", "b"]
+
+
+def test_config_rejects_invalid_test_size():
+    with pytest.raises(ValueError, match="test_size must be strictly between"):
+        Config(test_size=0.0)
+    with pytest.raises(ValueError, match="test_size must be strictly between"):
+        Config(test_size=1.0)
+    with pytest.raises(ValueError, match="test_size must be strictly between"):
+        Config(test_size=-0.1)
+    with pytest.raises(ValueError, match="test_size must be strictly between"):
+        Config(test_size=1.5)
+
+
+def test_config_rejects_invalid_cv_folds():
+    with pytest.raises(ValueError, match="cv_folds must be between 2 and 10"):
+        Config(cv_folds=1)
+    with pytest.raises(ValueError, match="cv_folds must be between 2 and 10"):
+        Config(cv_folds=11)
+
+
+def test_config_rejects_invalid_alpha_arrays():
+    with pytest.raises(ValueError, match="ridge_alphas must have 1-100 values"):
+        Config(ridge_alphas=[])
+    with pytest.raises(ValueError, match="ridge_alphas must have 1-100 values"):
+        Config(ridge_alphas=[0.1] * 101)
+    with pytest.raises(ValueError, match="ridge_alphas must be positive"):
+        Config(ridge_alphas=[-0.1])
+    with pytest.raises(ValueError, match="lasso_alphas must have 1-100 values"):
+        Config(lasso_alphas=[])
+    with pytest.raises(ValueError, match="lasso_alphas must be positive"):
+        Config(lasso_alphas=[-0.1])
+    with pytest.raises(ValueError, match="elasticnet_alphas must have 1-100 values"):
+        Config(elasticnet_alphas=[])
+    with pytest.raises(ValueError, match="elasticnet_alphas must be positive"):
+        Config(elasticnet_alphas=[-0.1])
+
+
+def test_config_rejects_invalid_l1_ratios():
+    with pytest.raises(ValueError, match="elasticnet_l1_ratios must have 1-100 values"):
+        Config(elasticnet_l1_ratios=[])
+    with pytest.raises(ValueError, match="elasticnet_l1_ratios must have 1-100 values"):
+        Config(elasticnet_l1_ratios=[0.1] * 101)
+    with pytest.raises(ValueError, match="elasticnet_l1_ratios must be in"):
+        Config(elasticnet_l1_ratios=[-0.1])
+    with pytest.raises(ValueError, match="elasticnet_l1_ratios must be in"):
+        Config(elasticnet_l1_ratios=[1.5])
+
+
+def test_config_rejects_invalid_max_iter():
+    with pytest.raises(ValueError, match="lasso_max_iter must be positive"):
+        Config(lasso_max_iter=0)
+    with pytest.raises(ValueError, match="elasticnet_max_iter must be positive"):
+        Config(elasticnet_max_iter=0)
+
+
+def test_config_rejects_invalid_dt_params():
+    with pytest.raises(ValueError, match="dt_max_depth must be positive"):
+        Config(dt_max_depth=0)
+    with pytest.raises(ValueError, match="dt_min_samples_split must be at least 2"):
+        Config(dt_min_samples_split=1)
+    with pytest.raises(ValueError, match="dt_min_samples_leaf must be positive"):
+        Config(dt_min_samples_leaf=0)
+
+
+def test_train_baselines_rejects_mismatched_samples():
+    config = Config()
+    X = np.zeros((5, 3))
+    y = np.zeros(4)
+    with pytest.raises(ValueError, match="same number of samples"):
+        train_baselines(X, y, config)
+
+
+def test_train_baselines_rejects_zero_features():
+    config = Config()
+    X = np.zeros((5, 0))
+    y = np.zeros(5)
+    with pytest.raises(ValueError, match="at least one feature"):
+        train_baselines(X, y, config)
+
+
+def test_train_baselines_rejects_non_finite_x():
+    config = Config()
+    X = np.array([[1.0, np.inf], [2.0, 3.0]])
+    y = np.array([1.0, 2.0])
+    with pytest.raises(ValueError, match="finite values"):
+        train_baselines(X, y, config)
+
+
+def test_train_baselines_rejects_non_finite_y():
+    config = Config()
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([1.0, np.nan])
+    with pytest.raises(ValueError, match="finite values"):
+        train_baselines(X, y, config)
+
+
+def test_train_regularized_rejects_mismatched_samples():
+    config = Config()
+    X = np.zeros((5, 3))
+    y = np.zeros(4)
+    with pytest.raises(ValueError, match="same number of samples"):
+        train_regularized(X, y, config)
+
+
+def test_train_regularized_rejects_zero_features():
+    config = Config()
+    X = np.zeros((5, 0))
+    y = np.zeros(5)
+    with pytest.raises(ValueError, match="at least one feature"):
+        train_regularized(X, y, config)
+
+
+def test_train_regularized_rejects_non_finite_x():
+    config = Config()
+    X = np.array([[1.0, np.inf], [2.0, 3.0]])
+    y = np.array([1.0, 2.0])
+    with pytest.raises(ValueError, match="finite values"):
+        train_regularized(X, y, config)
+
+
+def test_train_regularized_rejects_non_finite_y():
+    config = Config()
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([1.0, np.nan])
+    with pytest.raises(ValueError, match="finite values"):
+        train_regularized(X, y, config)
