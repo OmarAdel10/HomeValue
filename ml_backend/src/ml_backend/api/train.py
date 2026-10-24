@@ -3,6 +3,8 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from sklearn.ensemble import RandomForestRegressor  # type: ignore[import-untyped]
+from sklearn.linear_model import ElasticNetCV, RidgeCV  # type: ignore[import-untyped]
 
 from ml_backend.config import Config
 from ml_backend.data.loader import load_california_housing
@@ -72,13 +74,28 @@ def run_full_training_pipeline(config: Config | None = None) -> dict:
     all_models.update(regularized)
 
     # 6. Train ensembles (need base estimators)
-    base_estimators = {
-        "rf": baselines["RandomForestRegressor"].named_steps["model"],
-        "ridge": regularized["RidgeCV"].named_steps["model"],
-        "enet": regularized["ElasticNetCV"].named_steps["model"],
-    }
-    ensembles = train_ensembles(X_train_enc, y_train_np, config, base_estimators)
+    ensembles = train_ensembles(X_train_enc, y_train_np, config, {})
     all_models.update(ensembles)
+
+    # 6b. Create UNFITTED base estimators for Voting/Stacking
+    base_estimators = {
+        "rf": RandomForestRegressor(
+            n_estimators=config.rf_n_estimators,
+            max_features=config.rf_max_features,
+            random_state=config.random_state,
+            n_jobs=config.cv_n_jobs,
+        ),
+        "ridge": RidgeCV(alphas=config.ridge_alphas, cv=config.cv_folds),
+        "enet": ElasticNetCV(
+            alphas=config.elasticnet_alphas,
+            l1_ratio=config.elasticnet_l1_ratios,
+            cv=config.cv_folds,
+            max_iter=config.elasticnet_max_iter,
+            random_state=config.random_state,
+        ),
+    }
+    ensembles_with_base = train_ensembles(X_train_enc, y_train_np, config, base_estimators)
+    all_models.update(ensembles_with_base)
 
     # 7. Hyperparameter tuning
     rf_tuned = tune_random_forest(X_train_enc, y_train_np, config)
