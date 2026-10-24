@@ -239,3 +239,37 @@ def test_identity_preprocessor_in_ensembles_module():
 
     # Should be the same class (imported from shared module)
     assert _IdentityPreprocessorEnsembles is _IdentityPreprocessorBase
+
+
+def test_train_ensembles_without_base_estimators_returns_rf_and_et_only():
+    X, y = _preprocessed_frame(80)
+    config = Config()
+
+    ensembles = train_ensembles(X, y, config, None)
+
+    assert set(ensembles.keys()) == {"RandomForestRegressor", "ExtraTreesRegressor"}
+    assert "VotingRegressor" not in ensembles
+    assert "StackingRegressor" not in ensembles
+
+    for pipeline in ensembles.values():
+        assert "preprocessor" in pipeline.named_steps
+        assert isinstance(pipeline.named_steps["preprocessor"], _IdentityPreprocessor)
+        preds = pipeline.predict(X[:5])
+        assert len(preds) == 5
+        assert np.isfinite(preds).all()
+
+
+def test_train_ensembles_without_base_estimators_still_validates_input():
+    config = Config()
+
+    with pytest.raises(ValueError, match="Training data must not be empty"):
+        train_ensembles(np.empty((0, 5)), np.empty(0), config, None)
+
+    with pytest.raises(ValueError, match="same number of samples"):
+        train_ensembles(np.empty((5, 3)), np.empty(4), config, None)
+
+    with pytest.raises(ValueError, match="at least one feature"):
+        train_ensembles(np.empty((5, 0)), np.empty(5), config, None)
+
+    with pytest.raises(ValueError, match="finite values"):
+        train_ensembles(np.array([[1.0, np.inf]]), np.array([1.0]), config, None)

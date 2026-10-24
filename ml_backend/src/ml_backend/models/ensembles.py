@@ -64,9 +64,9 @@ def train_ensembles(
         if missing:
             raise ValueError(f"base_estimators missing required keys: {missing}")
 
-        # VotingRegressor (hard voting by default)
+        # VotingRegressor (hard voting is default)
         voting = VotingRegressor(
-            estimators=[(name, base_estimators[name]) for name in ["rf", "ridge", "enet"]]
+            estimators=[(name, base_estimators[name]) for name in ["rf", "ridge", "enet"]],
         )
         voting_pipeline = Pipeline([("preprocessor", _IdentityPreprocessor()), ("model", voting)])
         voting_pipeline.fit(X, y)
@@ -75,7 +75,7 @@ def train_ensembles(
         # StackingRegressor with RidgeCV as final estimator
         stacking = StackingRegressor(
             estimators=[(name, base_estimators[name]) for name in ["rf", "ridge", "enet"]],
-            final_estimator=RidgeCV(alphas=np.array(config.ridge_alphas), cv=config.cv_folds),
+            final_estimator=RidgeCV(alphas=config.ridge_alphas, cv=config.cv_folds),
             cv=config.cv_folds,
             n_jobs=config.cv_n_jobs,
         )
