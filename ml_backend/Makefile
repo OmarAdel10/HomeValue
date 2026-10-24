@@ -32,13 +32,11 @@ test:
 
 # Train model
 train:
-	@echo "Not implemented in phase 1 - see README roadmap."
-	@exit 1
+	python -m ml_backend.api.train
 
 # Serve API
 serve:
-	@echo "Not implemented in phase 1 - see README roadmap."
-	@exit 1
+	uvicorn ml_backend.server:app --host 127.0.0.1 --port 8000 --reload
 
 # Clean cache
 clean:

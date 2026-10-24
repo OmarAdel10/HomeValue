@@ -9,6 +9,7 @@ from ml_backend.models.evaluation import (
     regression_metrics,
 )
 from ml_backend.models.regularized import train_regularized
+from ml_backend.models.selection import load_model, save_model, select_best_model
 from ml_backend.models.tuning import tune_gradient_boosting, tune_random_forest
 
 __all__ = [
@@ -17,6 +18,9 @@ __all__ = [
     "train_ensembles",
     "tune_random_forest",
     "tune_gradient_boosting",
+    "select_best_model",
+    "save_model",
+    "load_model",
     "regression_metrics",
     "cv_scores",
     "evaluate_model",
