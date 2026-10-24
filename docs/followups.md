@@ -8,8 +8,8 @@ Plane project `HOME` (HomeValue).
 - **HOME-6** — Phase 1 delivery: scaffold, California/Ames loaders, verified cache,
   exploration, CI/CD. Tracked as the parent work item for this branch.
 - **HOME-1** — Dependency reproducibility: `ml_backend/pyproject.toml` uses lower
-  bounds only. Add a lockfile with hashes and a `pip-audit` gate. Deferred while the
-  phase surface is still small; revisit before Phase 2.
+  bounds only. Add a lockfile with hashes and a `pip-audit` gate. Deferred to a
+  dedicated `chore/` branch after Phase 2; it is not a preprocessing defect.
 - **HOME-2** — `ml_backend/src/ml_backend/data/loader.py`: cache writes are atomic but
   reopen by path, and verification/read are separate opens. Harden with fd-based
   writes and `O_NOFOLLOW` before model persistence lands.
@@ -31,3 +31,25 @@ Plane project `HOME` (HomeValue).
   operations grow.
 - Hyperparameter grids are hardcoded in `Config`; externalize them only if tuning
   needs to change without code edits.
+
+## Task 3 / Phase 2 review (2026-10-23)
+
+- **HOME-10** — Phase 2 delivery: preprocessing pipeline, Week 02 ratio features,
+  feature-type inference, and reproducible train/test split.
+- Week 02 names `rooms_per_household` and `population_per_household` are intentionally
+  not emitted as new columns: the bundled California dataset stores per-household
+  averages, so those names would duplicate `AveRooms` and `AveOccup`. The pipeline
+  derives `rooms_per_person`, `bedrooms_per_room`, and `households` instead.
+- **HOME-11** — `ml_backend/src/ml_backend/preprocessing/pipeline.py`: one-hot encoding
+  every level of high-cardinality Ames categoricals can explode the feature width.
+  Add `min_frequency`/`max_categories` and a deliberate sparse-output policy before the
+  API phase.
+- **HOME-12** — When model persistence lands (HOME-7), store the train/test split digest
+  and dependency versions alongside the artifact for reproducibility.
+- Booleans and datetime columns are rejected by `infer_feature_types`; support requires
+  an explicit encoding decision, so it stays out of scope until a dataset needs it.
+- **HOME-13** — `infer_feature_types` classifies any `object` column as categorical;
+  mixed values such as `["INLAND", 1, None]` fail later inside `OneHotEncoder` without
+  naming the column. Add a pandas `infer_dtype` guard before Ames CSV ingestion.
+- `_to_object_with_nan` is referenced by `FunctionTransformer`; promote it to a public
+  symbol before model artifacts pickle the preprocessing pipeline (HOME-7/HOME-12).

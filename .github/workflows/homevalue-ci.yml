@@ -48,7 +48,7 @@ jobs:
           wheel=$(ls dist/*.whl)
           "$RUNNER_TEMP/wheel-env/bin/pip" install --quiet "${wheel}[viz]"
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/wheel-env/bin/python" -c "import ml_backend; from ml_backend.data import explore, loader"
+          "$RUNNER_TEMP/wheel-env/bin/python" -c "import ml_backend; from ml_backend.data import explore, loader; from ml_backend import preprocessing"
 
   flutter:
     name: Flutter Desktop

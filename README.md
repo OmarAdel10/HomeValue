@@ -6,10 +6,11 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 1 (foundation).** The ML data layer (California + Ames loaders,
-> verified parquet cache, exploratory analysis) and CI/CD are implemented. Preprocessing,
-> models, the FastAPI service, and the Flutter UI are roadmap items below and are not
-> available yet.
+> **Status — Phase 2 (preprocessing).** The ML data layer (California + Ames loaders,
+> verified parquet cache, exploratory analysis), the preprocessing pipeline (median /
+> most-frequent imputation, scaling, one-hot encoding, Week 02 ratio features), and
+> reproducible train/test splitting are implemented. Models, the FastAPI service, and
+> the Flutter UI are roadmap items below and are not available yet.
 
 ## Architecture
 
@@ -32,7 +33,7 @@ graph TD
     end
 ```
 
-## Implemented in Phase 1
+## Implemented in Phases 1-2
 
 - **Data loading**: California Housing (`MedHouseVal`) and Ames Housing (`SalePrice`).
 - **Verified cache**: parquet files with a SHA-256 sidecar that detects accidental
@@ -40,6 +41,11 @@ graph TD
   is local integrity only and is not a tamper-proof trust anchor.
 - **Exploration**: dataset statistics (shape, dtypes, missing values, correlations,
   categorical summaries) and optional distribution/correlation/missing-value plots.
+- **Preprocessing**: median numeric imputation, most-frequent categorical imputation,
+  `StandardScaler`, full-level one-hot encoding with unseen-category tolerance, and
+  non-redundant California ratio features.
+- **Data split**: reproducible, config-driven train/test split with index and size
+  validation.
 - **CI**: formatting, linting, typing, tests, Linux desktop build on every branch.
 - **CD**: tag-driven release on `master`, builds the Python wheel and Linux bundle.
 
@@ -102,6 +108,34 @@ Plotting is optional and requires the `viz` extra:
 pip install -e "ml_backend[viz]"
 ```
 
+## Preprocessing Usage
+
+```python
+from ml_backend.config import Config
+from ml_backend.data.loader import load_california_housing
+from ml_backend.preprocessing import (
+    build_preprocessing_pipeline,
+    infer_feature_types,
+    split_train_test,
+)
+
+X, y = load_california_housing()
+X_train, X_test, y_train, y_test = split_train_test(X, y, Config())
+
+numeric, categorical = infer_feature_types(X_train)
+pipeline = build_preprocessing_pipeline(numeric, categorical)
+X_train_encoded = pipeline.fit_transform(X_train)  # fit on training data only
+X_test_encoded = pipeline.transform(X_test)
+```
+
+Feature engineering runs automatically when the four California source columns are
+declared as numeric features; pass `feature_engineering=False` to disable it. A
+partial declaration raises unless engineering is explicitly disabled. Because the
+bundled dataset stores per-household averages, the pipeline derives
+`rooms_per_person`, `bedrooms_per_room`, and `households` instead of duplicating
+`AveRooms`/`AveOccup`. Category levels are not dropped, so an unseen category
+encodes as an all-zero block rather than colliding with a reference level.
+
 ## Project Structure
 
 ```
@@ -111,7 +145,8 @@ HomeValue/
 ├── ml_backend/                   # Python ML backend
 │   ├── src/ml_backend/
 │   │   ├── config.py
-│   │   └── data/                 # loaders + exploration (phase 1)
+│   │   ├── data/                 # loaders + exploration (phase 1)
+│   │   └── preprocessing/        # feature engineering, pipeline, split (phase 2)
 │   ├── tests/
 │   ├── pyproject.toml
 │   ├── Makefile
