@@ -6,7 +6,7 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 3 (models).** The ML data layer, preprocessing pipeline, baseline models (LinearRegression, DecisionTreeRegressor), regularized models (RidgeCV, LassoCV, ElasticNetCV), evaluation metrics (RMSE/MAE/R² + 5-fold CV), and config-driven hyperparameters are implemented. Ensembles, hyperparameter tuning, the FastAPI service, and the Flutter UI are roadmap items below.
+> **Status — Phase 4 (ensembles).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, and ensemble models (RandomForest, ExtraTrees, Voting, Stacking) are implemented. Hyperparameter tuning, the FastAPI service, and the Flutter UI are roadmap items below.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ graph TD
     end
 ```
 
-## Implemented in Phases 1-3
+## Implemented in Phases 1-4
 
 - **Data loading**: California Housing (`MedHouseVal`) and Ames Housing (`SalePrice`).
 - **Verified cache**: parquet files with a SHA-256 sidecar that detects accidental
@@ -45,6 +45,7 @@ graph TD
 - **Baseline models**: `LinearRegression`, `DecisionTreeRegressor` (with configurable depth/leaf limits) wrapped in inference-ready pipelines.
 - **Regularized models**: `RidgeCV`, `LassoCV`, `ElasticNetCV` with config-driven alpha/l1_ratio grids and convergence monitoring.
 - **Evaluation**: RMSE, MAE, R² metrics and 5-fold cross-validation with configurable scoring.
+- **Ensembles**: `RandomForestRegressor`, `ExtraTreesRegressor`, `VotingRegressor` (hard voting), `StackingRegressor` (RidgeCV final estimator) with config-driven hyperparameters.
 - **CI**: formatting, linting, typing, tests, Linux desktop build on every branch.
 - **CD**: tag-driven release on `master`, builds the Python wheel and Linux bundle.
 
@@ -159,6 +160,41 @@ print(f"RidgeCV CV RMSE: {cv_results['cv_rmse_mean']:.3f} ± {cv_results['cv_rms
 Model training uses the same preprocessing pipeline for inference-time compatibility.
 Decision trees have configurable depth/leaf limits to prevent overfitting.
 LassoCV and ElasticNetCV include convergence monitoring via configurable max_iter.
+
+## Ensemble Usage
+
+```python
+from ml_backend.config import Config
+from ml_backend.models import train_ensembles
+from ml_backend.models.baselines import train_baselines
+from ml_backend.models.regularized import train_regularized
+
+config = Config()
+
+# Train baselines and regularized models first (they provide base estimators)
+baselines = train_baselines(X_train_encoded, y_train, config)
+regularized = train_regularized(X_train_encoded, y_train, config)
+
+# Combine as base estimators for ensembles
+base_estimators = {
+    "rf": baselines["RandomForestRegressor"].named_steps["model"],
+    "ridge": regularized["RidgeCV"].named_steps["model"],
+    "enet": regularized["ElasticNetCV"].named_steps["model"],
+}
+
+ensembles = train_ensembles(X_train_encoded, y_train, config, base_estimators)
+
+for name, pipeline in {**baselines, **regularized, **ensembles}.items():
+    metrics = evaluate_model(pipeline, X_test_encoded, y_test)
+    print(f"{name}: RMSE={metrics['rmse']:.3f}")
+
+# RandomForest/ExtraTrees use config rf_n_estimators=200, max_features='sqrt', n_jobs=cv_n_jobs
+# VotingRegressor uses hard voting over rf, ridge, enet
+# StackingRegressor uses RidgeCV final estimator with config ridge_alphas and cv_folds
+```
+
+All ensembles share the identity preprocessor for inference-time compatibility.
+RandomForest and ExtraTrees include n_jobs parallelism controlled by cv_n_jobs.
 
 ## Project Structure
 
