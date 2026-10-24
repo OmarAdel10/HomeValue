@@ -3,10 +3,10 @@
 scikit-learn training pipeline and FastAPI service for the HomeValue house price
 prediction project.
 
-> Phase 4 status: data loading, dataset integrity caching, exploratory analysis, the
-> preprocessing pipeline, baseline models, regularized models, evaluation metrics, and
-> ensemble models (RandomForest, ExtraTrees, Voting, Stacking) are implemented.
-> Hyperparameter tuning and the HTTP API arrive in later phases.
+> Phase 5 status: data loading, dataset integrity caching, exploratory analysis, the
+> preprocessing pipeline, baseline models, regularized models, evaluation metrics,
+> ensemble models, and hyperparameter tuning (RandomizedSearchCV for RandomForest and
+> GradientBoosting) are implemented. The HTTP API arrives in the next phase.
 
 ## Setup
 

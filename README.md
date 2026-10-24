@@ -6,7 +6,7 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 4 (ensembles).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, and ensemble models (RandomForest, ExtraTrees, Voting, Stacking) are implemented. Hyperparameter tuning, the FastAPI service, and the Flutter UI are roadmap items below.
+> **Status — Phase 5 (tuning).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, ensemble models, and hyperparameter tuning (RandomizedSearchCV for RandomForest and GradientBoosting) are implemented. The FastAPI service and the Flutter UI are roadmap items below.
 
 ## Architecture
 
@@ -195,6 +195,36 @@ for name, pipeline in {**baselines, **regularized, **ensembles}.items():
 
 All ensembles share the identity preprocessor for inference-time compatibility.
 RandomForest and ExtraTrees include n_jobs parallelism controlled by cv_n_jobs.
+
+## Hyperparameter Tuning Usage
+
+```python
+from ml_backend.config import Config
+from ml_backend.models import tune_random_forest, tune_gradient_boosting
+
+config = Config()
+
+# Tune RandomForest hyperparameters
+rf_search = tune_random_forest(X_train_encoded, y_train, config)
+print(f"Best RF params: {rf_search.best_params_}")
+print(f"Best RF CV RMSE: {-rf_search.best_score_:.3f}")
+
+# Tune GradientBoosting hyperparameters
+gb_search = tune_gradient_boosting(X_train_encoded, y_train, config)
+print(f"Best GB params: {gb_search.best_params_}")
+print(f"Best GB CV RMSE: {-gb_search.best_score_:.3f}")
+
+# Use best estimators for prediction
+best_rf = rf_search.best_estimator_
+best_gb = gb_search.best_estimator_
+preds_rf = best_rf.predict(X_test_encoded)
+preds_gb = best_gb.predict(X_test_encoded)
+```
+
+Tuning uses `RandomizedSearchCV` with config-driven parameter distributions:
+- RandomForest: `n_estimators`, `max_depth`, `min_samples_split`, `min_samples_leaf`, `max_features`
+- GradientBoosting: `n_estimators`, `learning_rate`, `max_depth`, `subsample`
+- `n_iter=20`, `cv=5`, `refit=True`, `n_jobs=cv_n_jobs` from config
 
 ## Project Structure
 
