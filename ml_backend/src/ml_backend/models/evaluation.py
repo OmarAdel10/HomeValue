@@ -1,0 +1,62 @@
+"""Model evaluation utilities for HomeValue."""
+
+from typing import Any
+
+import numpy as np
+from sklearn.metrics import (  # type: ignore[import-untyped]
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
+from sklearn.model_selection import cross_val_score  # type: ignore[import-untyped]
+
+
+def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    """Compute RMSE, MAE, and R² for regression predictions."""
+    y_true = np.asarray(y_true).ravel()
+    y_pred = np.asarray(y_pred).ravel()
+
+    if y_true.shape != y_pred.shape:
+        raise ValueError("y_true and y_pred must have the same length")
+
+    rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
+    mae = float(mean_absolute_error(y_true, y_pred))
+    r2 = float(r2_score(y_true, y_pred))
+
+    return {"rmse": rmse, "mae": mae, "r2": r2}
+
+
+def cv_scores(
+    estimator: Any,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: int = 5,
+    scoring: str = "neg_root_mean_squared_error",
+) -> dict[str, float]:
+    """Run cross-validation and return mean and std of scores."""
+    scores = cross_val_score(estimator, X, y, cv=cv, scoring=scoring, n_jobs=-1)
+    return {"mean": float(np.mean(scores)), "std": float(np.std(scores))}
+
+
+def evaluate_model(
+    estimator: Any,
+    X: np.ndarray,
+    y: np.ndarray,
+) -> dict[str, float]:
+    """Evaluate a fitted estimator on data and return metrics."""
+    y_pred = estimator.predict(X)
+    return regression_metrics(y, y_pred)
+
+
+def cross_validate_model(
+    estimator: Any,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: int = 5,
+) -> dict[str, float]:
+    """Cross-validate an estimator and return CV RMSE mean/std."""
+    scores = cv_scores(estimator, X, y, cv=cv, scoring="neg_root_mean_squared_error")
+    return {
+        "cv_rmse_mean": -scores["mean"],  # negate back to positive RMSE
+        "cv_rmse_std": scores["std"],
+    }
