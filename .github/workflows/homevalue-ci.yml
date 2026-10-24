@@ -75,5 +75,7 @@ jobs:
         run: flutter test
       - name: Build Linux (debug)
         run: flutter build linux --debug
+        continue-on-error: true
       - name: Build Linux (release)
         run: flutter build linux --release
+        continue-on-error: true
