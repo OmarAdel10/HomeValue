@@ -8,7 +8,7 @@ from sklearn.ensemble import (
     StackingRegressor,
     VotingRegressor,
 )
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import ElasticNetCV, RidgeCV
 from sklearn.pipeline import Pipeline
 
 from ml_backend.config import Config
@@ -25,11 +25,13 @@ def _preprocessed_frame(n_rows: int = 80) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _base_estimators(config: Config) -> dict:
-    """Create base estimators for Voting and Stacking."""
+    """Create base estimators for Voting and Stacking (UNFITTED)."""
     return {
         "rf": RandomForestRegressor(n_estimators=50, random_state=config.random_state),
         "ridge": RidgeCV(alphas=[0.1, 1.0, 10.0]),
-        "enet": RidgeCV(alphas=[0.1, 1.0, 10.0]),
+        "enet": ElasticNetCV(
+            alphas=[0.1, 1.0, 10.0], l1_ratio=[0.5], max_iter=1000, random_state=config.random_state
+        ),
     }
 
 
@@ -37,11 +39,13 @@ def test_train_ensembles_returns_fitted_pipelines():
     X, y = _preprocessed_frame(100)
     config = Config()
 
-    # Provide base estimators from previous tasks
+    # Provide base estimators from previous tasks (unfitted)
     base_estimators = {
         "rf": RandomForestRegressor(n_estimators=50, random_state=config.random_state),
         "ridge": RidgeCV(alphas=[0.1, 1.0, 10.0]),
-        "enet": RidgeCV(alphas=[0.1, 1.0, 10.0]),  # Using Ridge as placeholder
+        "enet": ElasticNetCV(
+            alphas=[0.1, 1.0, 10.0], l1_ratio=[0.5], max_iter=1000, random_state=config.random_state
+        ),
     }
 
     ensembles = train_ensembles(X, y, config, base_estimators)
@@ -273,3 +277,51 @@ def test_train_ensembles_without_base_estimators_still_validates_input():
 
     with pytest.raises(ValueError, match="finite values"):
         train_ensembles(np.array([[1.0, np.inf]]), np.array([1.0]), config, None)
+
+
+def test_train_ensembles_rejects_malicious_estimator():
+    """Test that arbitrary estimator classes are rejected (RCE prevention)."""
+    X, y = _preprocessed_frame(80)
+    config = Config()
+
+    class MaliciousEstimator:
+        def __reduce__(self):
+            import os
+
+            return (os.system, ("echo 'RCE'",))
+
+    with pytest.raises(ValueError, match="must be one of"):
+        train_ensembles(
+            X,
+            y,
+            config,
+            {
+                "rf": MaliciousEstimator(),
+                "ridge": RidgeCV(alphas=[1.0]),
+                "enet": ElasticNetCV(alphas=[1.0], l1_ratio=[0.5], max_iter=100),
+            },
+        )
+
+    with pytest.raises(ValueError, match="must be one of"):
+        train_ensembles(
+            X,
+            y,
+            config,
+            {
+                "rf": RandomForestRegressor(n_estimators=10),
+                "ridge": MaliciousEstimator(),
+                "enet": ElasticNetCV(alphas=[1.0], l1_ratio=[0.5], max_iter=100),
+            },
+        )
+
+    with pytest.raises(ValueError, match="must be one of"):
+        train_ensembles(
+            X,
+            y,
+            config,
+            {
+                "rf": RandomForestRegressor(n_estimators=10),
+                "ridge": RidgeCV(alphas=[1.0]),
+                "enet": MaliciousEstimator(),
+            },
+        )

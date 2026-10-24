@@ -131,6 +131,16 @@ class Config:
         if self.dt_min_samples_leaf < 1:
             raise ValueError("dt_min_samples_leaf must be positive")
 
+        # Ensemble hyperparameters
+        if self.rf_n_estimators < 1 or self.rf_n_estimators > 1000:
+            raise ValueError("rf_n_estimators must be between 1 and 1000")
+        if self.rf_max_features not in ("sqrt", "log2", None) and not (
+            isinstance(self.rf_max_features, float) and 0 < self.rf_max_features <= 1
+        ):
+            raise ValueError("rf_max_features must be 'sqrt', 'log2', None, or a float in (0, 1]")
+        if self.cv_n_jobs < -1 or self.cv_n_jobs == 0:
+            raise ValueError("cv_n_jobs must be -1 (all cores) or a positive integer")
+
     def ensure_dirs(self) -> None:
         """Create the configured working directories."""
         for directory in (self.data_dir, self.models_dir, self.logs_dir):
