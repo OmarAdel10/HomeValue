@@ -1,6 +1,7 @@
 """Model training, evaluation, and selection for HomeValue."""
 
 from ml_backend.models.baselines import train_baselines
+from ml_backend.models.ensembles import train_ensembles
 from ml_backend.models.evaluation import (
     cross_validate_model,
     cv_scores,
@@ -12,6 +13,7 @@ from ml_backend.models.regularized import train_regularized
 __all__ = [
     "train_baselines",
     "train_regularized",
+    "train_ensembles",
     "regression_metrics",
     "cv_scores",
     "evaluate_model",
