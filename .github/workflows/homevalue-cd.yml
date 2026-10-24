@@ -20,6 +20,11 @@ jobs:
         with:
           python-version-file: "ml_backend/.python-version"
           cache: "pip"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: "stable"
       - name: Install dependencies
         working-directory: ml_backend
         run: pip install -e ".[dev]"
