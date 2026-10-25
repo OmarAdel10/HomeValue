@@ -3,11 +3,11 @@
 scikit-learn training pipeline and FastAPI service for the HomeValue house price
 prediction project.
 
-> Phase 6 status: data loading, dataset integrity caching, exploratory analysis, the
+> Phase 7 status: data loading, dataset integrity caching, exploratory analysis, the
 > preprocessing pipeline, baseline models, regularized models, evaluation metrics,
-> ensemble models, hyperparameter tuning, model selection, joblib serialization, and
-> training API endpoint are implemented. The FastAPI prediction service and the Flutter
-> UI arrive in the next phases.
+> ensemble models, hyperparameter tuning, model selection, joblib serialization,
+> training API endpoint, and prediction API endpoints (`/predict`, `/predict/batch`,
+> `/model/info`, `/model/comparison`) are implemented. The Flutter UI is a roadmap item.
 
 ## Setup
 

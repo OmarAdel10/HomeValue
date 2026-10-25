@@ -6,7 +6,7 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 6 (API).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, ensemble models, hyperparameter tuning, model selection, serialization, and training API endpoint are implemented. The FastAPI prediction service and the Flutter UI are roadmap items below.
+> **Status — Phase 7 (prediction API).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, ensemble models, hyperparameter tuning, model selection, serialization, training API, and prediction API endpoints (`/predict`, `/predict/batch`, `/model/info`, `/model/comparison`) are implemented. The Flutter UI is a roadmap item below.
 
 ## Architecture
 
@@ -253,6 +253,76 @@ The `/train` endpoint runs the full pipeline:
 7. Returns model name, test metrics, and CV RMSE
 
 The best model is loaded at server startup for the prediction endpoints (Phase 7).
+
+## Prediction API Usage
+
+```bash
+# Single prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "MedInc": 8.3252,
+    "HouseAge": 41.0,
+    "AveRooms": 6.984127,
+    "AveBedrms": 1.02381,
+    "Population": 322.0,
+    "AveOccup": 2.555556,
+    "Latitude": 37.88,
+    "Longitude": -122.23,
+    "ocean_proximity": "NEAR BAY"
+  }'
+```
+
+```python
+import requests
+
+# Single prediction
+response = requests.post("http://localhost:8000/predict", json={
+    "MedInc": 8.3252,
+    "HouseAge": 41.0,
+    "AveRooms": 6.984127,
+    "AveBedrms": 1.02381,
+    "Population": 322.0,
+    "AveOccup": 2.555556,
+    "Latitude": 37.88,
+    "Longitude": -122.23,
+    "ocean_proximity": "NEAR BAY"
+})
+result = response.json()
+print(f"Predicted price: ${result['prediction'] * 100000:,.0f}")
+
+# Batch prediction
+response = requests.post("http://localhost:8000/predict/batch", json={
+    "features": [
+        {"MedInc": 8.3252, "HouseAge": 41.0, "AveRooms": 6.984127, "AveBedrms": 1.02381, "Population": 322.0, "AveOccup": 2.555556, "Latitude": 37.88, "Longitude": -122.23, "ocean_proximity": "NEAR BAY"},
+        {"MedInc": 4.5, "HouseAge": 25.0, "AveRooms": 5.0, "AveBedrms": 1.2, "Population": 500.0, "AveOccup": 3.0, "Latitude": 34.0, "Longitude": -118.0, "ocean_proximity": "INLAND"}
+    ]
+})
+result = response.json()
+for i, pred in enumerate(result["predictions"]):
+    print(f"Property {i+1}: ${pred * 100000:,.0f}")
+```
+
+```python
+# Model info and comparison
+import requests
+
+# Get model info
+response = requests.get("http://localhost:8000/model/info")
+print(response.json())
+
+# Get model comparison
+response = requests.get("http://localhost:8000/model/comparison")
+print(response.json())
+```
+
+The prediction endpoints:
+- `POST /predict` — Single prediction with California housing features
+- `POST /predict/batch` — Batch predictions for multiple properties
+- `GET /model/info` — Current model metadata
+- `GET /model/comparison` — Model comparison metrics
+
+All endpoints require the model to be loaded (trained via `POST /train` first).
 
 ## Project Structure
 
