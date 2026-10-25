@@ -21,13 +21,14 @@ class AppTheme {
         ),
         iconTheme: IconThemeData(color: Colors.grey[900]),
       ),
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
+      // cardTheme: CardTheme(
+      //   elevation: 2,
+      //   shape: RoundedRectangleBorder(
+      //     borderRadius: BorderRadius.circular(16),
+      //   ),
+      //   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      // ),
+      // Note: CardThemeData not available in Flutter 3.24; apply card styling directly in widgets
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF2E7D32),
@@ -125,14 +126,15 @@ class AppTheme {
         ),
         iconTheme: IconThemeData(color: Colors.grey[100]),
       ),
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: const Color(0xFF1E1E1E),
-      ),
+      // cardTheme: CardTheme(
+      //   elevation: 2,
+      //   shape: RoundedRectangleBorder(
+      //     borderRadius: BorderRadius.circular(16),
+      //   ),
+      //   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      //   color: const Color(0xFF1E1E1E),
+      // ),
+      // Note: CardThemeData not available in Flutter 3.24; apply card styling directly in widgets
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF4CAF50),
