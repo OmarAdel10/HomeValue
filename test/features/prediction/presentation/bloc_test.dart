@@ -65,19 +65,9 @@ void main() {
         );
         return PredictionBloc(repository: mockRepository);
       },
-      act: (bloc) => bloc.add(PredictRequested(const HouseFeatures(
-        medInc: 8.3252,
-        houseAge: 41.0,
-        aveRooms: 6.984127,
-        aveBedrms: 1.02381,
-        population: 322.0,
-        aveOccup: 2.555556,
-        latitude: 37.88,
-        longitude: -122.23,
-        oceanProximity: OceanProximity.nearBay,
-      ))),
+      act: (bloc) => bloc.add(const PredictRequested(testFeatures)),
       expect: () => [
-        PredictionLoading(),
+        const PredictionLoading(),
         isA<PredictionSuccess>(),
       ],
     );
@@ -90,19 +80,9 @@ void main() {
         );
         return PredictionBloc(repository: mockRepository);
       },
-      act: (bloc) => bloc.add(PredictRequested(const HouseFeatures(
-        medInc: 8.3252,
-        houseAge: 41.0,
-        aveRooms: 6.984127,
-        aveBedrms: 1.02381,
-        population: 322.0,
-        aveOccup: 2.555556,
-        latitude: 37.88,
-        longitude: -122.23,
-        oceanProximity: OceanProximity.nearBay,
-      ))),
+      act: (bloc) => bloc.add(const PredictRequested(testFeatures)),
       expect: () => [
-        PredictionLoading(),
+        const PredictionLoading(),
         isA<PredictionFailure>(),
       ],
     );
@@ -111,7 +91,7 @@ void main() {
       'emits [ModelInfoLoaded] when LoadModelInfo succeeds',
       build: () {
         when(() => mockRepository.getModelInfo()).thenAnswer(
-          (_) async => ModelInfo(
+          (_) async => const ModelInfo(
             model: 'best_model.joblib',
             loaded: true,
             steps: ['preprocessor', 'model'],

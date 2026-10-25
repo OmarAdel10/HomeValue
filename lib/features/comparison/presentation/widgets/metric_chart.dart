@@ -1,6 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
+import '../../domain/entities/model_comparison.dart';
 
 class MetricChart extends StatelessWidget {
   const MetricChart({
@@ -26,21 +26,6 @@ class MetricChart extends StatelessWidget {
         return m.cvStd;
       default:
         return m.rmse;
-    }
-  }
-
-  String _getMetricLabel(String name) {
-    switch (name.toLowerCase()) {
-      case 'rmse':
-        return 'RMSE';
-      case 'mae':
-        return 'MAE';
-      case 'r2':
-        return 'R² Score';
-      case 'cv_std':
-        return 'CV Std Dev';
-      default:
-        return name.toUpperCase();
     }
   }
 

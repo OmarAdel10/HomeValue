@@ -1,4 +1,4 @@
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:home_value/features/prediction/data/models/model_info_model.dart';
 import 'package:home_value/features/prediction/domain/entities/model_info.dart';
 
@@ -18,11 +18,7 @@ void main() {
 
     group('fromEntity', () {
       test('creates model from entity correctly', () {
-        final model = ModelInfoModel.fromEntity(const ModelInfo(
-          model: 'best_model.joblib',
-          loaded: true,
-          steps: ['preprocessor', 'model'],
-        ));
+        final model = ModelInfoModel.fromEntity(testEntity);
 
         expect(model.model, 'best_model.joblib');
         expect(model.loaded, true);
@@ -104,13 +100,7 @@ void main() {
 
     group('fromJson', () {
       test('deserializes from JSON correctly', () {
-        final json = {
-          'model': 'best_model.joblib',
-          'loaded': true,
-          'steps': ['preprocessor', 'model'],
-        };
-
-        final model = ModelInfoModel.fromJson(json);
+        final model = ModelInfoModel.fromJson(testJson);
 
         expect(model.model, 'best_model.joblib');
         expect(model.loaded, true);

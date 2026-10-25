@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:home_value/features/prediction/presentation/screens/home_screen.dart';
 import 'package:home_value/features/prediction/presentation/bloc/prediction_bloc.dart';
-import 'package:home_value/features/prediction/presentation/bloc/prediction_event.dart';
-import 'package:home_value/features/prediction/presentation/bloc/prediction_state.dart';
 import 'package:home_value/features/prediction/domain/entities/house_features.dart';
 import 'package:home_value/features/prediction/domain/entities/prediction_result.dart';
 import 'package:home_value/features/prediction/domain/repositories/prediction_repository.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:bloc_test/bloc_test.dart';
 
 class MockPredictionRepository extends Mock implements PredictionRepository {}
 

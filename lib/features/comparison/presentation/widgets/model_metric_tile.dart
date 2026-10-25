@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
+import '../../domain/entities/model_comparison.dart';
 
 class ModelMetricTile extends StatelessWidget {
   const ModelMetricTile({

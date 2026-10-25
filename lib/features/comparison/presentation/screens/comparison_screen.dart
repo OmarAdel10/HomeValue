@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
-import 'package:home_value/features/comparison/presentation/bloc/comparison_bloc.dart';
-import 'package:home_value/features/comparison/presentation/widgets/metric_chart.dart';
-import 'package:home_value/features/comparison/presentation/widgets/model_metric_tile.dart';
+import '../../domain/entities/model_comparison.dart';
+import '../bloc/comparison_bloc.dart';
+import '../widgets/metric_chart.dart';
+import '../widgets/model_metric_tile.dart';
 
 class ComparisonScreen extends StatefulWidget {
   const ComparisonScreen({super.key});

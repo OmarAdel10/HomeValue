@@ -1,4 +1,5 @@
 /// Application-wide constants for HomeValue Flutter app.
+library;
 
 class AppConstants {
   // API Configuration
@@ -7,10 +8,10 @@ class AppConstants {
 
   // API Endpoints
   static const String predictEndpoint = '/predict';
-  static const String predictBatchEndpoint = '/predict_batch';
+  static const String predictBatchEndpoint = '/predict/batch';
   static const String healthEndpoint = '/health';
-  static const String modelInfoEndpoint = '/model_info';
-  static const String modelComparisonEndpoint = '/model_comparison';
+  static const String modelInfoEndpoint = '/model/info';
+  static const String modelComparisonEndpoint = '/model/comparison';
   static const String trainEndpoint = '/train';
 
   // Feature field definitions for California Housing dataset

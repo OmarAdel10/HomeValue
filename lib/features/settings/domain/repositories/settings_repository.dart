@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
+import '../entities/app_settings.dart';
 
 abstract class SettingsRepository {
   Future<AppSettings> getSettings();

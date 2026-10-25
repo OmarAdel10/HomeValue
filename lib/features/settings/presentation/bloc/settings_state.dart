@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
+import '../../domain/entities/app_settings.dart';
 
 abstract class SettingsState extends Equatable {
   const SettingsState();

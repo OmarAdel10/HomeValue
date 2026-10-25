@@ -70,7 +70,7 @@ void main() {
         );
         return SettingsBloc(repository: mockRepository);
       },
-      seed: () => SettingsLoaded(testSettings),
+      seed: () => const SettingsLoaded(testSettings),
       act: (bloc) =>
           bloc.add(const UpdateServerUrl('http://192.168.1.100:8000')),
       expect: () => [
@@ -89,7 +89,7 @@ void main() {
         );
         return SettingsBloc(repository: mockRepository);
       },
-      seed: () => SettingsLoaded(testSettings),
+      seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const ToggleTheme(ThemeMode.dark)),
       expect: () => [
         isA<SettingsLoaded>(),
@@ -107,7 +107,7 @@ void main() {
         );
         return SettingsBloc(repository: mockRepository);
       },
-      seed: () => SettingsLoaded(testSettings),
+      seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const ToggleAutoRetrain(true)),
       expect: () => [
         isA<SettingsLoaded>(),

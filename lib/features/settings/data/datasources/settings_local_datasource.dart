@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
+import '../../domain/entities/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsLocalDataSource {

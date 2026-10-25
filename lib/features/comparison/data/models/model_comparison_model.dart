@@ -1,4 +1,4 @@
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
+import '../../domain/entities/model_comparison.dart';
 import 'dart:convert';
 
 class ModelMetricModel extends ModelMetric {

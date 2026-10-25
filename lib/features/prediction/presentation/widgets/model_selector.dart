@@ -15,7 +15,7 @@ class ModelSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       onChanged: onChanged,
       hint: hint != null ? Text(hint!) : null,
       items: const [

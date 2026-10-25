@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:home_value/features/prediction/domain/entities/prediction_result.dart';
+import '../../domain/entities/prediction_result.dart';
 
 class PredictionResultCard extends StatelessWidget {
   const PredictionResultCard({
@@ -13,7 +13,6 @@ class PredictionResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final price =
         result.prediction * 100000; // Convert from $100k to actual price
 

@@ -62,7 +62,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const LoadComparison()),
       expect: () => [
-        ComparisonLoading(),
+        const ComparisonLoading(),
         isA<ComparisonLoaded>(),
       ],
     );
@@ -77,7 +77,7 @@ void main() {
       },
       act: (bloc) => bloc.add(const LoadComparison()),
       expect: () => [
-        ComparisonLoading(),
+        const ComparisonLoading(),
         isA<ComparisonFailure>(),
       ],
     );

@@ -198,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildOceanProximitySelector() {
     return DropdownButtonFormField<OceanProximity>(
       key: const Key('ocean_proximity_dropdown'),
-      value: _selectedOceanProximity,
+      initialValue: _selectedOceanProximity,
       decoration: InputDecoration(
         labelText: AppConstants.featureLabels[AppConstants.oceanProximityField],
         prefixIcon: const Icon(Icons.waves),

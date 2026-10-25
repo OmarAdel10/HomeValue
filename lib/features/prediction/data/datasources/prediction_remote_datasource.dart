@@ -6,8 +6,6 @@ import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
 import '../../domain/repositories/prediction_repository.dart';
-import '../../domain/repositories/prediction_repository.dart'
-    show ModelComparison;
 
 class PredictionRemoteDataSource implements PredictionRepository {
   final String baseUrl;
@@ -36,7 +34,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
     if (response.statusCode == 200) {
       return PredictionResult.fromJson(jsonDecode(response.body));
     } else if (response.statusCode == 503) {
-      throw ModelNotLoadedException();
+      throw const ModelNotLoadedException();
     } else {
       throw PredictionException(
         'Prediction failed: ${response.statusCode}',
@@ -66,7 +64,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
           .map((p) => (p as num).toDouble())
           .toList();
     } else if (response.statusCode == 503) {
-      throw ModelNotLoadedException();
+      throw const ModelNotLoadedException();
     } else {
       throw PredictionException(
         'Batch prediction failed: ${response.statusCode}',

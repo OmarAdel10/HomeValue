@@ -1,9 +1,9 @@
-library comparison_bloc;
+library;
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
-import 'package:home_value/features/comparison/domain/repositories/comparison_repository.dart';
+import '../../domain/entities/model_comparison.dart';
+import '../../domain/repositories/comparison_repository.dart';
 part 'comparison_event.dart';
 part 'comparison_state.dart';
 

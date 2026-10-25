@@ -1,6 +1,5 @@
-import 'package:home_value/core/constants.dart';
-import 'package:home_value/features/comparison/data/models/model_comparison_model.dart';
-import 'package:home_value/features/comparison/domain/entities/model_comparison.dart';
+import '../../../../core/constants.dart';
+import '../models/model_comparison_model.dart';
 import 'package:http/http.dart' as http;
 
 class ComparisonRemoteDataSource {

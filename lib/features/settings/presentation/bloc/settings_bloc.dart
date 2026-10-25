@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
-import 'package:home_value/features/settings/domain/repositories/settings_repository.dart';
+import '../../domain/entities/app_settings.dart';
+import '../../domain/repositories/settings_repository.dart';
 import 'settings_event.dart';
 import 'settings_state.dart';
 

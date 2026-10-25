@@ -4,8 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:home_value/features/settings/presentation/screens/settings_screen.dart';
 import 'package:home_value/features/settings/presentation/bloc/settings_bloc.dart';
-import 'package:home_value/features/settings/presentation/bloc/settings_event.dart';
-import 'package:home_value/features/settings/presentation/bloc/settings_state.dart';
 import 'package:home_value/features/settings/domain/entities/app_settings.dart';
 import 'package:home_value/features/settings/domain/repositories/settings_repository.dart';
 

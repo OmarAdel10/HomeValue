@@ -1,7 +1,6 @@
 import 'package:equatable/equatable.dart';
 
 import '../../domain/entities/house_features.dart';
-import '../../domain/entities/prediction_result.dart';
 
 abstract class PredictionEvent extends Equatable {
   const PredictionEvent();

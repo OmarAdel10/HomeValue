@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:home_value/features/settings/presentation/bloc/settings_bloc.dart';
-import 'package:home_value/features/settings/presentation/bloc/settings_event.dart';
-import 'package:home_value/features/settings/presentation/bloc/settings_state.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
+import '../bloc/settings_bloc.dart';
+import '../bloc/settings_event.dart';
+import '../bloc/settings_state.dart';
+import '../../domain/entities/app_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -158,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                     ),
                     const SizedBox(height: 4),
-                    Text('Version 1.0.0'),
+                    const Text('Version 1.0.0'),
                     const SizedBox(height: 4),
                     Text(
                       'House price prediction using machine learning',
@@ -199,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildThemeSelector(ThemeMode currentTheme) {
     return DropdownButtonFormField<ThemeMode>(
-      value: currentTheme,
+      initialValue: currentTheme,
       decoration: const InputDecoration(
         labelText: 'Theme',
         prefixIcon: Icon(Icons.palette),

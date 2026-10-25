@@ -1,9 +1,7 @@
 import 'package:equatable/equatable.dart';
 
-import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
-import '../../domain/repositories/prediction_repository.dart';
 
 abstract class PredictionState extends Equatable {
   const PredictionState();

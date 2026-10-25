@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:home_value/features/settings/data/datasources/settings_local_datasource.dart';
-import 'package:home_value/features/settings/domain/entities/app_settings.dart';
-import 'package:home_value/features/settings/domain/repositories/settings_repository.dart';
+import '../datasources/settings_local_datasource.dart';
+import '../../domain/entities/app_settings.dart';
+import '../../domain/repositories/settings_repository.dart';
 
 class SettingsRepositoryImpl implements SettingsRepository {
   final SettingsLocalDataSource localDataSource;
