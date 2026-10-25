@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants.dart';
 import '../../domain/entities/house_features.dart';
-import '../../domain/entities/prediction_result.dart'
-    show PredictionResult;
+import '../../domain/entities/prediction_result.dart' show PredictionResult;
 import '../bloc/prediction_bloc.dart';
 import '../bloc/prediction_state.dart';
 import '../bloc/prediction_event.dart';
@@ -268,8 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     context.read<PredictionBloc>().add(
-      PredictRequested(features),
-    );
+          PredictRequested(features),
+        );
   }
 
   void _showPredictionDialog(BuildContext context, PredictionResult result) {

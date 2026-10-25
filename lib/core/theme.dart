@@ -61,7 +61,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[400]),
       ),
@@ -165,7 +166,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         labelStyle: TextStyle(color: Colors.grey[300]),
         hintStyle: TextStyle(color: Colors.grey[600]),
       ),

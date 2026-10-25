@@ -6,7 +6,8 @@ import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
 import '../../domain/repositories/prediction_repository.dart';
-import '../../domain/repositories/prediction_repository.dart' show ModelComparison;
+import '../../domain/repositories/prediction_repository.dart'
+    show ModelComparison;
 
 class PredictionRemoteDataSource implements PredictionRepository {
   final String baseUrl;
