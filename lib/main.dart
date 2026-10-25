@@ -6,6 +6,10 @@ import 'core/di.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme.dart';
 import 'features/prediction/presentation/bloc/prediction_bloc.dart';
+import 'features/settings/presentation/bloc/settings_bloc.dart';
+import 'features/settings/presentation/bloc/settings_event.dart';
+import 'features/settings/presentation/bloc/settings_state.dart';
+import 'features/settings/domain/entities/app_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,14 +25,29 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (_) => sl<PredictionBloc>()),
+        BlocProvider(
+          create: (_) {
+            final bloc = sl<SettingsBloc>();
+            bloc.add(LoadSettings());
+            return bloc;
+          },
+        ),
       ],
-      child: MaterialApp.router(
-        title: 'HomeValue',
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
-        routerConfig: appRouter,
-        debugShowCheckedModeBanner: false,
+      child: BlocBuilder<SettingsBloc, SettingsState>(
+        builder: (context, state) {
+          final themeMode = state is SettingsLoaded
+              ? state.settings.themeMode
+              : ThemeMode.system;
+
+          return MaterialApp.router(
+            title: 'HomeValue',
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            themeMode: themeMode,
+            routerConfig: appRouter,
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }
