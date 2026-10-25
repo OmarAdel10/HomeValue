@@ -5,6 +5,14 @@ class AppConstants {
   static const String apiBaseUrl = 'http://localhost:8000';
   static const Duration apiTimeout = Duration(seconds: 30);
 
+  // API Endpoints
+  static const String predictEndpoint = '/predict';
+  static const String predictBatchEndpoint = '/predict_batch';
+  static const String healthEndpoint = '/health';
+  static const String modelInfoEndpoint = '/model_info';
+  static const String modelComparisonEndpoint = '/model_comparison';
+  static const String trainEndpoint = '/train';
+
   // Feature field definitions for California Housing dataset
   static const List<String> featureNames = [
     'MedInc',
