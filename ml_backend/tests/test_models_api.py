@@ -15,7 +15,10 @@ def client():
 
 def test_model_info_returns_correct_schema_when_model_not_loaded(client):
     """GET /model/info returns correct schema when no model loaded."""
-    with patch("ml_backend.api.state._model", None):
+    with (
+        patch("ml_backend.api.state._model", None),
+        patch("ml_backend.api.state.load_saved_model"),
+    ):
         response = client.get("/model/info")
         assert response.status_code == 200
         data = response.json()

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [development, master]
+    branches: ["**"]
   pull_request:
     branches: [development, master]
 
@@ -131,19 +131,19 @@ jobs:
       - name: Train model
         run: |
           cd ml_backend
-          python -m home_value.train
+          python -m ml_backend.api.train
 
       - name: Start FastAPI server
         run: |
           cd ml_backend
-          nohup python -m uvicorn home_value.server:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+          nohup python -m uvicorn ml_backend.server:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
           echo $! > server.pid
           sleep 10
 
       - name: Verify server health
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:8000/health | grep -q "healthy"; then
+            if curl -s http://localhost:8000/health | grep -q '"status"'; then
               echo "Server is healthy"
               break
             fi

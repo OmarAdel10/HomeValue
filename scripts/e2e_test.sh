@@ -56,17 +56,17 @@ else
 fi
 
 # Train model if not exists
-MODEL_PATH="$ML_BACKEND_DIR/models/homevalue_best_model.joblib"
+MODEL_PATH="$PROJECT_ROOT/models/best_model.joblib"
 if [ ! -f "$MODEL_PATH" ]; then
     echo -e "${YELLOW}Model not found, training...${NC}"
-    python -m home_value.train || {
+    python -m ml_backend.api.train || {
         echo -e "${RED}Model training failed${NC}"
         exit 1
     }
 fi
 
 # Start server in background
-python -m uvicorn home_value.server:app --host 0.0.0.0 --port 8000 &
+python -m uvicorn ml_backend.server:app --host 0.0.0.0 --port 8000 &
 SERVER_PID=$!
 
 # Wait for server to be ready
@@ -85,8 +85,8 @@ done
 
 # Verify model is loaded
 echo -e "${YELLOW}Verifying model is loaded...${NC}"
-MODEL_INFO=$(curl -s http://localhost:8000/model_info)
-if echo "$MODEL_INFO" | grep -q '"loaded": true'; then
+MODEL_INFO=$(curl -s http://localhost:8000/model/info)
+if echo "$MODEL_INFO" | grep -q '"loaded":true'; then
     echo -e "${GREEN}Model loaded successfully${NC}"
 else
     echo -e "${RED}Model not loaded: $MODEL_INFO${NC}"

@@ -5,33 +5,29 @@ Tests the full pipeline: data loading -> preprocessing -> model training ->
 model saving -> FastAPI server -> prediction endpoint.
 """
 
-import tempfile
-from pathlib import Path
-
-import pytest
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
+from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
 
+from ml_backend.api import state as api_state
+from ml_backend.config import Config
 from ml_backend.data.loader import load_california_housing
+from ml_backend.models.baselines import train_baselines
+from ml_backend.models.ensembles import train_ensembles
+from ml_backend.models.regularized import train_regularized
+from ml_backend.models.selection import (
+    load_model,
+    save_model,
+    select_best_model,
+)
 from ml_backend.preprocessing import (
     build_preprocessing_pipeline,
     split_train_test,
 )
-from ml_backend.models.baselines import train_baselines
-from ml_backend.models.regularized import train_regularized
-from ml_backend.models.ensembles import train_ensembles
-from ml_backend.models.evaluation import evaluate_model
-from ml_backend.models.selection import (
-    select_best_model,
-    save_model,
-    load_model,
-)
 from ml_backend.server import app
-from ml_backend.api.state import load_saved_model
-from ml_backend.config import Config
 
 
 class TestFullPipeline:
@@ -43,7 +39,7 @@ class TestFullPipeline:
         return Config()
 
     @pytest.fixture
-    def trained_pipeline(self, config, tmp_path):
+    def trained_pipeline(self, config, tmp_path, monkeypatch):
         """Train a full pipeline and save the best model to config's models_dir."""
         # Load data - returns (X, y) tuple
         X, y = load_california_housing()
@@ -68,18 +64,17 @@ class TestFullPipeline:
         best_name, best_model = select_best_model(all_models, X_test_processed, y_test)
 
         # Create full pipeline with preprocessor + best model
-        full_pipeline = Pipeline([
-            ("preprocessing", preprocessing_pipeline),
-            ("model", best_model),
-        ])
+        full_pipeline = Pipeline(
+            [
+                ("preprocessing", preprocessing_pipeline),
+                ("model", best_model),
+            ]
+        )
 
-        # Save model to config's models_dir so FastAPI can load it
-        config.ensure_dirs()
-        model_path = config.models_dir / "best_model.joblib"
+        # Save to a temp dir (never the repo models dir) and inject into API state
+        model_path = tmp_path / "best_model.joblib"
         save_model(full_pipeline, model_path)
-
-        # Reload the model in the FastAPI app
-        load_saved_model()
+        monkeypatch.setattr(api_state, "_model", full_pipeline)
 
         return {
             "model_path": model_path,
@@ -133,36 +128,36 @@ class TestFullPipeline:
         """Test FastAPI /predict endpoint with loaded model."""
         client = TestClient(app)
 
-        # Use first test sample - California housing has 8 features, no ocean_proximity
+        # Use first test sample; ocean_proximity is required by the API contract
+        # but is not consumed by the 8-feature model.
         X_test = trained_pipeline["X_test"]
         sample = X_test.iloc[0].to_dict()
-        # Note: California housing dataset doesn't have ocean_proximity
-        # The API expects it but the model was trained without it
-        # This tests the actual API behavior
+        sample["ocean_proximity"] = "INLAND"
 
         response = client.post("/predict", json=sample)
-        # The API might reject due to missing ocean_proximity
-        # Accept 200, 422, or 500 depending on API design
-        assert response.status_code in (200, 422, 500)
+        assert response.status_code == 200
 
-        if response.status_code == 200:
-            data = response.json()
-            assert "prediction" in data
-            assert "model" in data
-            assert "model_version" in data
-            assert isinstance(data["prediction"], (int, float))
-            assert np.isfinite(data["prediction"])
+        data = response.json()
+        assert "prediction" in data
+        assert "model" in data
+        assert "model_version" in data
+        assert isinstance(data["prediction"], (int, float))
+        assert np.isfinite(data["prediction"])
 
     def test_fastapi_predict_batch_endpoint(self, trained_pipeline):
-        """Test FastAPI /predict_batch endpoint."""
+        """Test FastAPI /predict/batch endpoint."""
         client = TestClient(app)
 
         X_test = trained_pipeline["X_test"]
         samples = X_test.iloc[:3].to_dict(orient="records")
 
-        response = client.post("/predict_batch", json=samples)
-        # Endpoint might not exist, accept 404 or 422
-        assert response.status_code in (200, 404, 422)
+        response = client.post("/predict/batch", json={"features": samples})
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "predictions" in data
+        assert len(data["predictions"]) == 3
+        assert all(np.isfinite(p) for p in data["predictions"])
 
     def test_fastapi_health_endpoint(self, trained_pipeline):
         """Test FastAPI /health endpoint."""
@@ -176,12 +171,15 @@ class TestFullPipeline:
         assert data["model_loaded"] is True
 
     def test_fastapi_model_info_endpoint(self, trained_pipeline):
-        """Test FastAPI /model_info endpoint."""
+        """Test FastAPI /model/info endpoint."""
         client = TestClient(app)
 
-        response = client.get("/model_info")
-        # Endpoint might not exist
-        assert response.status_code in (200, 404)
+        response = client.get("/model/info")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["loaded"] is True
+        assert "steps" in data
 
     def test_full_pipeline_end_to_end(self, trained_pipeline):
         """Test complete end-to-end pipeline: data -> model -> API -> prediction."""
@@ -197,19 +195,18 @@ class TestFullPipeline:
         # Test prediction
         X_test = trained_pipeline["X_test"]
         sample = X_test.iloc[0].to_dict()
+        sample["ocean_proximity"] = "INLAND"
 
         response = client.post("/predict", json=sample)
-        # API might reject due to missing ocean_proximity
-        assert response.status_code in (200, 422, 500)
+        assert response.status_code == 200
 
-        if response.status_code == 200:
-            data = response.json()
-            prediction = data["prediction"]
+        data = response.json()
+        prediction = data["prediction"]
 
-            # Verify prediction is a valid float (house price in $100k units)
-            assert isinstance(prediction, (int, float))
-            assert np.isfinite(prediction)
-            assert 0.5 < prediction < 10.0  # Reasonable range for California housing
+        # Verify prediction is a valid float (house price in $100k units)
+        assert isinstance(prediction, (int, float))
+        assert np.isfinite(prediction)
+        assert 0.5 < prediction < 10.0  # Reasonable range for California housing
 
 
 class TestModelPersistence:
@@ -218,10 +215,12 @@ class TestModelPersistence:
     def test_save_load_preserves_predictions(self, tmp_path):
         """Test that saving and loading preserves prediction behavior."""
         # Create simple pipeline
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("model", LinearRegression()),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("model", LinearRegression()),
+            ]
+        )
 
         # Generate dummy data
         X = np.random.randn(100, 5)
@@ -258,9 +257,9 @@ class TestAPIValidation:
         """Test that /predict_batch rejects empty list."""
         client = TestClient(app)
 
-        # The endpoint might not exist, accept 404 or 422
-        response = client.post("/predict_batch", json=[])
-        assert response.status_code in (404, 422)
+        # The endpoint rejects an empty feature list
+        response = client.post("/predict/batch", json={"features": []})
+        assert response.status_code == 422
 
 
 if __name__ == "__main__":
