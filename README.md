@@ -6,7 +6,7 @@ model training, regularization, ensembles, tuning) with scikit-learn, exposed vi
 FastAPI. Linux desktop GUI built with Flutter following MVVM + BLoC. Course project for
 Advanced Machine Learning (Weeks 02-05).
 
-> **Status — Phase 5 (tuning).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, ensemble models, and hyperparameter tuning (RandomizedSearchCV for RandomForest and GradientBoosting) are implemented. The FastAPI service and the Flutter UI are roadmap items below.
+> **Status — Phase 6 (API).** The ML data layer, preprocessing pipeline, baseline models, regularized models, evaluation metrics, ensemble models, hyperparameter tuning, model selection, serialization, and training API endpoint are implemented. The FastAPI prediction service and the Flutter UI are roadmap items below.
 
 ## Architecture
 
@@ -225,6 +225,34 @@ Tuning uses `RandomizedSearchCV` with config-driven parameter distributions:
 - RandomForest: `n_estimators`, `max_depth`, `min_samples_split`, `min_samples_leaf`, `max_features`
 - GradientBoosting: `n_estimators`, `learning_rate`, `max_depth`, `subsample`
 - `n_iter=20`, `cv=5`, `refit=True`, `n_jobs=cv_n_jobs` from config
+
+## Training API Usage
+
+```bash
+# Start the training pipeline via HTTP
+curl -X POST http://localhost:8000/train
+```
+
+```python
+import requests
+
+response = requests.post("http://localhost:8000/train")
+result = response.json()
+print(f"Best model: {result['model']}")
+print(f"Test RMSE: {result['metrics']['rmse']:.3f}")
+print(f"CV RMSE: {result['cv_rmse']:.3f} ± {result['cv_rmse_std']:.3f}")
+```
+
+The `/train` endpoint runs the full pipeline:
+1. Loads California housing data
+2. Splits train/test with config-driven `test_size` and `random_state`
+3. Builds preprocessing pipeline (imputation, scaling, one-hot encoding, feature engineering)
+4. Trains all model types: baselines, regularized, ensembles, tuned
+5. Selects best model by test RMSE
+6. Saves best model to `models/best_model.joblib`
+7. Returns model name, test metrics, and CV RMSE
+
+The best model is loaded at server startup for the prediction endpoints (Phase 7).
 
 ## Project Structure
 
