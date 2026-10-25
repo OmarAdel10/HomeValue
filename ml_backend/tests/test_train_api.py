@@ -14,8 +14,15 @@ def client():
 
 
 def test_train_endpoint_exists(client):
-    response = client.post("/train")
-    assert response.status_code != 404
+    with patch("ml_backend.api.train.run_full_training_pipeline") as mock_train:
+        mock_train.return_value = {
+            "model": "RandomForestRegressor",
+            "metrics": {"rmse": 0.45, "mae": 0.32, "r2": 0.89},
+            "cv_rmse": 0.48,
+        }
+        response = client.post("/train")
+    assert response.status_code == 200
+    mock_train.assert_called_once()
 
 
 def test_train_endpoint_returns_correct_schema(client):

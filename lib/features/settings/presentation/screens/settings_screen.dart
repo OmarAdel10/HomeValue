@@ -53,8 +53,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildSettingsForm(BuildContext context, AppSettings settings) {
-    _urlController.text = settings.serverUrl;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Form(
@@ -79,10 +77,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         border: OutlineInputBorder(),
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
+                        if (value == null || value.trim().isEmpty) {
                           return 'Please enter a server URL';
                         }
-                        if (!Uri.tryParse(value)!.hasAbsolutePath) {
+                        final uri = Uri.tryParse(value.trim());
+                        if (uri == null ||
+                            !uri.hasScheme ||
+                            (uri.scheme != 'http' && uri.scheme != 'https') ||
+                            uri.host.isEmpty) {
                           return 'Please enter a valid URL';
                         }
                         return null;

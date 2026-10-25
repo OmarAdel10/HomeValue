@@ -1,25 +1,37 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:home_value/core/di.dart';
 import 'package:home_value/main.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await initDependencies();
+  });
+
+  tearDownAll(() async {
+    await sl.reset();
+  });
+
   group('End-to-end integration tests', () {
-    testWidgets('App launches and shows home screen', (WidgetTester tester) async {
+    testWidgets('App launches and shows home screen',
+        (WidgetTester tester) async {
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
 
-      // Verify app launches
       expect(find.byType(MaterialApp), findsOneWidget);
+      expect(find.text('Predict House Price'), findsOneWidget);
     });
 
-    testWidgets('Prediction form is displayed with all fields', (WidgetTester tester) async {
+    testWidgets('Prediction form is displayed with all fields',
+        (WidgetTester tester) async {
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
 
-      // Check all form fields are present
       expect(find.text('Median Income (in \$100k)'), findsOneWidget);
       expect(find.text('House Age (years)'), findsOneWidget);
       expect(find.text('Average Rooms per Household'), findsOneWidget);
@@ -35,11 +47,9 @@ void main() {
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
 
-      // Tap settings icon in app bar
       await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
 
-      // Verify settings screen
       expect(find.text('Settings'), findsOneWidget);
       expect(find.text('Server URL'), findsOneWidget);
     });
@@ -48,11 +58,9 @@ void main() {
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
 
-      // Tap comparison icon in app bar
       await tester.tap(find.byIcon(Icons.compare_arrows));
       await tester.pumpAndSettle();
 
-      // Verify comparison screen
       expect(find.text('Model Comparison'), findsOneWidget);
     });
   });

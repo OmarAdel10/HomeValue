@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/di.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme.dart';
+import 'features/comparison/presentation/bloc/comparison_bloc.dart';
 import 'features/prediction/presentation/bloc/prediction_bloc.dart';
 import 'features/settings/presentation/bloc/settings_bloc.dart';
 import 'features/settings/presentation/bloc/settings_event.dart';
@@ -23,6 +24,7 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (_) => sl<PredictionBloc>()),
+        BlocProvider(create: (_) => sl<ComparisonBloc>()),
         BlocProvider(
           create: (_) {
             final bloc = sl<SettingsBloc>();

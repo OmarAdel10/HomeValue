@@ -15,12 +15,18 @@ class SettingsLocalDataSource {
 
   SettingsLocalDataSource(this._prefs);
 
+  /// Synchronous read used by the HTTP layer before each request.
+  String get serverUrl => _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
+
   Future<AppSettings> getSettings() async {
     final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
     final themeModeIndex = _prefs.getInt(_themeModeKey) ?? _defaultThemeMode;
     final autoRetrain = _prefs.getBool(_autoRetrainKey) ?? _defaultAutoRetrain;
 
-    final themeMode = ThemeMode.values[themeModeIndex];
+    final themeMode =
+        themeModeIndex >= 0 && themeModeIndex < ThemeMode.values.length
+            ? ThemeMode.values[themeModeIndex]
+            : ThemeMode.system;
 
     return AppSettings(
       serverUrl: serverUrl,

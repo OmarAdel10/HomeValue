@@ -13,11 +13,15 @@ class ModelMetricModel extends ModelMetric {
 
   factory ModelMetricModel.fromJson(Map<String, dynamic> json) {
     return ModelMetricModel(
-      name: json['model_name'] as String? ?? json['name'] as String,
+      name: json['model_name'] as String? ??
+          json['model'] as String? ??
+          json['name'] as String? ??
+          'Unknown',
       rmse: (json['rmse'] as num?)?.toDouble() ?? 0.0,
       mae: (json['mae'] as num?)?.toDouble() ?? 0.0,
       r2: (json['r2'] as num?)?.toDouble() ?? 0.0,
-      cvStd: (json['cv_std'] as num?)?.toDouble() ?? 0.0,
+      cvStd:
+          ((json['cv_std'] ?? json['cv_rmse_std']) as num?)?.toDouble() ?? 0.0,
       isBest: json['is_best'] as bool? ?? false,
     );
   }
@@ -45,7 +49,13 @@ class ModelComparisonModel extends ModelComparison {
   const ModelComparisonModel({required super.metrics});
 
   factory ModelComparisonModel.fromJson(String jsonString) {
-    final List<dynamic> jsonList = json.decode(jsonString);
+    final decoded = json.decode(jsonString);
+    final List<dynamic> jsonList;
+    if (decoded is Map<String, dynamic>) {
+      jsonList = decoded['models'] as List<dynamic>? ?? const [];
+    } else {
+      jsonList = decoded as List<dynamic>;
+    }
     final metrics = jsonList
         .map((e) => ModelMetricModel.fromJson(e as Map<String, dynamic>))
         .toList();

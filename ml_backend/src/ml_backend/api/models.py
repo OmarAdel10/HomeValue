@@ -18,10 +18,12 @@ async def model_info() -> dict:
     if model is None:
         return {"model": None, "loaded": False}
 
+    steps = list(model.named_steps.keys()) if hasattr(model, "named_steps") else []
+
     return {
         "model": "best_model.joblib",
         "loaded": True,
-        "steps": list(model.named_steps.keys()),
+        "steps": steps,
     }
 
 

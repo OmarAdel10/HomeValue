@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/comparison/presentation/screens/comparison_screen.dart';
 import '../../features/prediction/presentation/screens/home_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -14,16 +15,12 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/comparison',
       name: 'comparison',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('Model Comparison - Coming Soon')),
-      ),
+      builder: (context, state) => const ComparisonScreen(),
     ),
     GoRoute(
       path: '/settings',
       name: 'settings',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('Settings - Coming Soon')),
-      ),
+      builder: (context, state) => const SettingsScreen(),
     ),
   ],
 );

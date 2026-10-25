@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [development, master]
 
+permissions:
+  contents: read
+
 jobs:
   python-backend:
     name: Python Backend (${{ matrix.python-version }})
@@ -68,15 +71,23 @@ jobs:
       - name: Set up Flutter ${{ matrix.flutter-channel }}
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ matrix.flutter-channel }}
           channel: ${{ matrix.flutter-channel }}
           cache: true
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev \
+            libglib2.0-dev cmake ninja-build clang libstdc++-12-dev xvfb
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Verify formatting
-        run: dart format --set-exit-if-changed lib test
+        run: dart format --set-exit-if-changed lib test integration_test
 
       - name: Analyze code
         run: flutter analyze
@@ -121,9 +132,17 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: stable
           channel: stable
           cache: true
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev \
+            libglib2.0-dev cmake ninja-build clang libstdc++-12-dev xvfb
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -136,23 +155,26 @@ jobs:
       - name: Start FastAPI server
         run: |
           cd ml_backend
-          nohup python -m uvicorn ml_backend.server:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+          nohup python -m uvicorn ml_backend.server:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
           echo $! > server.pid
-          sleep 10
+          sleep 5
 
       - name: Verify server health
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:8000/health | grep -q '"status"'; then
+            if curl -fsS http://127.0.0.1:8000/health | grep -q '"status":"ok"'; then
               echo "Server is healthy"
-              break
+              exit 0
             fi
             sleep 1
           done
+          echo "Server did not become healthy"
+          cat ml_backend/server.log || true
+          exit 1
 
       - name: Run Flutter integration tests
         run: |
-          flutter test integration_test/app_test.dart -d linux
+          xvfb-run -a flutter test integration_test/app_test.dart -d linux
 
       - name: Stop FastAPI server
         if: always()

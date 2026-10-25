@@ -13,6 +13,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml_backend.api import state as api_state
+from ml_backend.api.train import save_training_artifact
 from ml_backend.config import Config
 from ml_backend.data.loader import load_california_housing
 from ml_backend.models.baselines import train_baselines
@@ -34,13 +35,13 @@ class TestFullPipeline:
     """Test the complete ML pipeline from data to prediction."""
 
     @pytest.fixture
-    def config(self):
-        """Create a test configuration."""
-        return Config()
+    def config(self, tmp_path):
+        """Create a test configuration rooted in a temporary directory."""
+        return Config(project_root=tmp_path)
 
     @pytest.fixture
-    def trained_pipeline(self, config, tmp_path, monkeypatch):
-        """Train a full pipeline and save the best model to config's models_dir."""
+    def trained_pipeline(self, config, monkeypatch):
+        """Train a full pipeline and save the best model via the production path."""
         # Load data - returns (X, y) tuple
         X, y = load_california_housing()
 
@@ -63,22 +64,15 @@ class TestFullPipeline:
         # Select best model - select_best_model expects dict of name -> Pipeline
         best_name, best_model = select_best_model(all_models, X_test_processed, y_test)
 
-        # Create full pipeline with preprocessor + best model
-        full_pipeline = Pipeline(
-            [
-                ("preprocessing", preprocessing_pipeline),
-                ("model", best_model),
-            ]
-        )
-
-        # Save to a temp dir (never the repo models dir) and inject into API state
-        model_path = tmp_path / "best_model.joblib"
-        save_model(full_pipeline, model_path)
-        monkeypatch.setattr(api_state, "_model", full_pipeline)
+        # Save through the same helper the training endpoint uses, then reload
+        model_path = save_training_artifact(preprocessing_pipeline, best_model, config)
+        loaded_pipeline = load_model(model_path)
+        monkeypatch.setattr(api_state, "_model", loaded_pipeline)
 
         return {
             "model_path": model_path,
             "best_name": best_name,
+            "pipeline": loaded_pipeline,
             "X_test": X_test,
             "y_test": y_test,
         }
@@ -207,6 +201,9 @@ class TestFullPipeline:
         assert isinstance(prediction, (int, float))
         assert np.isfinite(prediction)
         assert 0.5 < prediction < 10.0  # Reasonable range for California housing
+        # Serialized artifact and API must agree on raw feature input
+        expected = float(trained_pipeline["pipeline"].predict(X_test.iloc[[0]])[0])
+        assert prediction == pytest.approx(expected, rel=1e-6)
 
 
 class TestModelPersistence:
