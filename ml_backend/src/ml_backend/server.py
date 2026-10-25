@@ -6,23 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ml_backend.api import train_router
-from ml_backend.config import Config
-from ml_backend.models.selection import load_model
-
-_model = None
+from ml_backend.api import model_router, predict_router, train_router
+from ml_backend.api.state import get_model, load_saved_model
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Load model on startup."""
-    global _model
-    config = Config()
-    model_file = config.models_dir / "best_model.joblib"
-    if model_file.exists():
-        _model = load_model(model_file)
-    else:
-        _model = None
+    load_saved_model()
     yield
 
 
@@ -42,19 +33,10 @@ app.add_middleware(
 )
 
 app.include_router(train_router)
+app.include_router(predict_router)
+app.include_router(model_router)
 
 
 @app.get("/health")
 async def health_check() -> dict:
-    return {"status": "ok", "model_loaded": _model is not None}
-
-
-@app.get("/model_info")
-async def model_info() -> dict:
-    if _model is None:
-        return {"model": None, "loaded": False}
-    return {
-        "model": "best_model.joblib",
-        "loaded": True,
-        "steps": list(_model.named_steps.keys()),
-    }
+    return {"status": "ok", "model_loaded": get_model() is not None}
