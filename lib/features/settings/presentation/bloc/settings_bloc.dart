@@ -84,7 +84,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   void _maybeStartAutoRetrain(AppSettings settings) {
     _autoRetrainTimer?.cancel();
     if (settings.autoRetrain) {
-      _autoRetrainTimer = Timer.periodic(_retrainInterval, (_) => _triggerRetrain());
+      _autoRetrainTimer =
+          Timer.periodic(_retrainInterval, (_) => _triggerRetrain());
       // Also trigger immediately on enable
       _triggerRetrain();
     }
