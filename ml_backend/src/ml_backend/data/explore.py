@@ -10,7 +10,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 
 from ml_backend.config import config
 
@@ -30,15 +29,6 @@ def _safe_filename_part(value: str) -> str:
 def _make_heatmap_cmap() -> "matplotlib.colors.Colormap":
     """Create a coolwarm colormap using the new with_extremes API."""
     return plt.get_cmap("coolwarm").with_extremes(bad="lightgray")
-
-
-def _ignore_seaborn_setbad_warnings():
-    """Context manager to suppress seaborn's internal set_bad deprecation warning."""
-    return warnings.catch_warnings(
-        action="ignore",
-        category=PendingDeprecationWarning,
-        module="seaborn.matrix",
-    )
 
 
 def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
