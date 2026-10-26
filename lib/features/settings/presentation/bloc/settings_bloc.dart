@@ -19,31 +19,47 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     LoadSettings event,
     Emitter<SettingsState> emit,
   ) async {
-    final settings = await repository.getSettings();
-    emit(SettingsLoaded(settings));
+    try {
+      final settings = await repository.getSettings();
+      emit(SettingsLoaded(settings));
+    } catch (e) {
+      emit(SettingsFailure(e.toString()));
+    }
   }
 
   Future<void> _onUpdateServerUrl(
     UpdateServerUrl event,
     Emitter<SettingsState> emit,
   ) async {
-    final settings = await repository.updateServerUrl(event.serverUrl);
-    emit(SettingsLoaded(settings));
+    try {
+      final settings = await repository.updateServerUrl(event.serverUrl);
+      emit(SettingsLoaded(settings));
+    } catch (e) {
+      emit(SettingsFailure(e.toString()));
+    }
   }
 
   Future<void> _onToggleTheme(
     ToggleTheme event,
     Emitter<SettingsState> emit,
   ) async {
-    final settings = await repository.updateThemeMode(event.themeMode);
-    emit(SettingsLoaded(settings));
+    try {
+      final settings = await repository.updateThemeMode(event.themeMode);
+      emit(SettingsLoaded(settings));
+    } catch (e) {
+      emit(SettingsFailure(e.toString()));
+    }
   }
 
   Future<void> _onToggleAutoRetrain(
     ToggleAutoRetrain event,
     Emitter<SettingsState> emit,
   ) async {
-    final settings = await repository.updateAutoRetrain(event.autoRetrain);
-    emit(SettingsLoaded(settings));
+    try {
+      final settings = await repository.updateAutoRetrain(event.autoRetrain);
+      emit(SettingsLoaded(settings));
+    } catch (e) {
+      emit(SettingsFailure(e.toString()));
+    }
   }
 }
