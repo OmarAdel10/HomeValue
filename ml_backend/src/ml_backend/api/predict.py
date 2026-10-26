@@ -64,11 +64,13 @@ class BatchSample(BaseModel):
     AveOccup: float = Field(..., description="Average household occupancy")
     Latitude: float = Field(..., description="Block group latitude")
     Longitude: float = Field(..., description="Block group longitude")
-    ocean_proximity: str = Field(..., description="Ocean proximity category")
+    ocean_proximity: str = Field(default="", description="Ocean proximity category")
 
     @field_validator("ocean_proximity")
     @classmethod
     def validate_ocean_proximity(cls, v: str) -> str:
+        if not v:
+            return v  # Allow empty/default (not used by model)
         if v not in OCEAN_PROXIMITY_VALUES:
             raise ValueError(f"ocean_proximity must be one of {OCEAN_PROXIMITY_VALUES}")
         return v
@@ -158,7 +160,6 @@ async def predict_batch(request: BatchPredictionRequest) -> BatchPredictionRespo
 
     try:
         # Build a DataFrame with the named columns the pipeline was fitted on.
-        # BatchSample objects need .model_dump() to convert to dict
         features_frame = pd.DataFrame(
             [
                 {feature: sample[feature] for feature in MODEL_FEATURES}
