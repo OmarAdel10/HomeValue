@@ -59,4 +59,3 @@ async def model_comparison() -> dict:
     """
     models = _load_comparison()
     return {"models": models}
-

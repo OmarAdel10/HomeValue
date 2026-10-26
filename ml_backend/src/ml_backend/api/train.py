@@ -29,7 +29,9 @@ from ml_backend.preprocessing import (
 router = APIRouter(prefix="/train", tags=["training"])
 
 
-def _save_comparison(config: Config, all_models: dict[str, Any], X_test_enc: Any, y_test_np: Any) -> list[dict]:
+def _save_comparison(
+    config: Config, all_models: dict[str, Any], X_test_enc: Any, y_test_np: Any
+) -> list[dict]:
     """Evaluate all models and save comparison data."""
     from ml_backend.models.evaluation import evaluate_model
 
@@ -38,17 +40,19 @@ def _save_comparison(config: Config, all_models: dict[str, Any], X_test_enc: Any
         metrics = evaluate_model(pipeline, X_test_enc, y_test_np)
         cv_results = cross_validate_model(pipeline, X_test_enc, y_test_np, cv=Config().cv_folds)
         is_best = False  # Will be updated after best model selection
-        comparison.append({
-            "model_name": name,
-            "model": name,
-            "rmse": metrics["rmse"],
-            "mae": metrics["mae"],
-            "r2": metrics["r2"],
-            "cv_rmse": cv_results["cv_rmse_mean"],
-            "cv_rmse_std": cv_results["cv_rmse_std"],
-            "cv_std": cv_results["cv_rmse_std"],
-            "is_best": is_best,
-        })
+        comparison.append(
+            {
+                "model_name": name,
+                "model": name,
+                "rmse": metrics["rmse"],
+                "mae": metrics["mae"],
+                "r2": metrics["r2"],
+                "cv_rmse": cv_results["cv_rmse_mean"],
+                "cv_rmse_std": cv_results["cv_rmse_std"],
+                "cv_std": cv_results["cv_rmse_std"],
+                "is_best": is_best,
+            }
+        )
 
     config.ensure_dirs()
     comparison_path = config.models_dir / "model_comparison.json"
@@ -65,7 +69,7 @@ def _update_best_in_comparison(config: Config, best_name: str) -> None:
         with open(comparison_path) as f:
             comparison = json.load(f)
         for m in comparison:
-            m["is_best"] = (m["model_name"] == best_name)
+            m["is_best"] = m["model_name"] == best_name
         with open(comparison_path, "w") as f:
             json.dump(comparison, f, indent=2)
 
@@ -212,4 +216,3 @@ if __name__ == "__main__":
 
     result = run_full_training_pipeline(Config())
     print(json.dumps(result, indent=2, default=str))
-
