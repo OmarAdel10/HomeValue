@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensemble models: RandomForest, ExtraTrees, Voting, Stacking regressors
   - Hyperparameter tuning: RandomizedSearchCV for RandomForest and GradientBoosting
   - Model selection: RMSE-based best model selection with joblib serialization
-  - FastAPI server with endpoints: `/predict`, `/predict_batch`, `/health`, `/model_info`, `/model_comparison`, `/train`
-  - Comprehensive test suite (234 tests, 95.61% coverage)
+  - FastAPI server with endpoints: `/predict`, `/predict/batch`, `/health`, `/model/info`, `/model/comparison`, `/train`
+  - Comprehensive test suite (246 tests, 95.6% coverage)
 
 - **Flutter Desktop App (Linux):**
   - MVVM + BLoC architecture with GetIt dependency injection
@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Material 3 theming with light/dark mode support
 
 - **Testing:**
-  - 234 Python backend tests (unit, integration, API)
+  - 246 Python backend tests (unit, integration, API)
   - 52 Flutter tests (BLoC, widget, integration)
   - End-to-end integration test script
 
