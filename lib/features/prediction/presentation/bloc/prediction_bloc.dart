@@ -1,8 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
-import '../../domain/entities/model_info.dart';
 import '../../domain/repositories/prediction_repository.dart';
 import 'prediction_event.dart';
 import 'prediction_state.dart';
@@ -10,7 +8,8 @@ import 'prediction_state.dart';
 class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
   final PredictionRepository repository;
 
-  PredictionBloc({required this.repository}) : super(PredictionInitial()) {
+  PredictionBloc({required this.repository})
+      : super(const PredictionInitial()) {
     on<PredictRequested>(_onPredictRequested);
     on<PredictBatchRequested>(_onPredictBatchRequested);
     on<ModelChanged>(_onModelChanged);
@@ -23,7 +22,7 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     PredictRequested event,
     Emitter<PredictionState> emit,
   ) async {
-    emit(PredictionLoading());
+    emit(const PredictionLoading());
     try {
       final result = await repository.predict(event.features);
       emit(PredictionSuccess(result));
@@ -36,9 +35,9 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     PredictBatchRequested event,
     Emitter<PredictionState> emit,
   ) async {
-    emit(PredictionLoading());
+    emit(const PredictionLoading());
     try {
-      final predictions = await repository.predictBatch(event.features);
+      await repository.predictBatch(event.features);
       // For batch, we emit the first prediction as success
       if (event.features.isNotEmpty) {
         // Note: Batch prediction returns list of doubles, not full PredictionResult
@@ -51,7 +50,8 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
           ),
         ));
       } else {
-        emit(PredictionFailure('No features provided for batch prediction'));
+        emit(const PredictionFailure(
+            'No features provided for batch prediction'));
       }
     } catch (e) {
       emit(PredictionFailure(e.toString()));
@@ -64,7 +64,7 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
   ) async {
     // Model change would require re-training or switching models
     // For now, just emit success with note
-    emit(PredictionFailure('Model switching not implemented yet'));
+    emit(const PredictionFailure('Model switching not implemented yet'));
   }
 
   Future<void> _onFormFieldChanged(
@@ -92,6 +92,6 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     Emitter<PredictionState> emit,
   ) async {
     // Not implemented yet
-    emit(ModelComparisonLoaded([]));
+    emit(const ModelComparisonLoaded([]));
   }
 }

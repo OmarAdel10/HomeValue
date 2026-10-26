@@ -1,10 +1,12 @@
 """FastAPI router for training endpoint."""
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from sklearn.ensemble import RandomForestRegressor  # type: ignore[import-untyped]
 from sklearn.linear_model import ElasticNetCV, RidgeCV  # type: ignore[import-untyped]
+from sklearn.pipeline import Pipeline  # type: ignore[import-untyped]
 
 from ml_backend.config import Config
 from ml_backend.data.loader import load_california_housing
@@ -24,6 +26,28 @@ from ml_backend.preprocessing import (
 )
 
 router = APIRouter(prefix="/train", tags=["training"])
+
+
+def save_training_artifact(
+    preprocessor: Any,
+    estimator: Any,
+    config: Config,
+) -> Path:
+    """Bundle a fitted preprocessor with the best estimator and persist it.
+
+    The inference API receives raw feature rows, so the artifact must expose
+    the same preprocessing step that was used during training.
+    """
+    config.ensure_dirs()
+    artifact = Pipeline(
+        [
+            ("preprocessing", preprocessor),
+            ("model", estimator),
+        ]
+    )
+    path = config.models_dir / "best_model.joblib"
+    save_model(artifact, path)
+    return path
 
 
 def run_full_training_pipeline(config: Config | None = None) -> dict:
@@ -73,11 +97,7 @@ def run_full_training_pipeline(config: Config | None = None) -> dict:
     regularized = train_regularized(X_train_enc, y_train_np, config)
     all_models.update(regularized)
 
-    # 6. Train ensembles (need base estimators)
-    ensembles = train_ensembles(X_train_enc, y_train_np, config, {})
-    all_models.update(ensembles)
-
-    # 6b. Create UNFITTED base estimators for Voting/Stacking
+    # 6. Create UNFITTED base estimators for Voting/Stacking
     base_estimators = {
         "rf": RandomForestRegressor(
             n_estimators=config.rf_n_estimators,
@@ -112,10 +132,11 @@ def run_full_training_pipeline(config: Config | None = None) -> dict:
     # 10. Cross-validation on best model
     cv_results = cross_validate_model(best_pipeline, X_train_enc, y_train_np, cv=config.cv_folds)
 
-    # 11. Save best model
-    save_model(best_pipeline, config.models_dir / "best_model.joblib")
+    # 11. Save preprocessing + best estimator so /predict can accept raw features
+    full_pipeline = save_training_artifact(preprocessor, best_pipeline, config)
 
     return {
+        "artifact": str(full_pipeline),
         "model": best_name,
         "metrics": test_metrics,
         "cv_rmse": cv_results["cv_rmse_mean"],
@@ -136,3 +157,10 @@ async def train_model() -> dict:
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {e}") from e
+
+
+if __name__ == "__main__":
+    import json
+
+    result = run_full_training_pipeline(Config())
+    print(json.dumps(result, indent=2, default=str))

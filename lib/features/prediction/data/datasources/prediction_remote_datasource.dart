@@ -2,27 +2,30 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../../core/constants.dart';
 import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
 import '../../domain/repositories/prediction_repository.dart';
-import '../../domain/repositories/prediction_repository.dart'
-    show ModelComparison;
 
 class PredictionRemoteDataSource implements PredictionRepository {
   final String baseUrl;
   final Duration timeout;
+  final String Function()? baseUrlProvider;
   final http.Client _client;
 
   PredictionRemoteDataSource({
     required this.baseUrl,
     required this.timeout,
+    this.baseUrlProvider,
     http.Client? client,
   }) : _client = client ?? http.Client();
 
+  String get _base => baseUrlProvider?.call() ?? baseUrl;
+
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
-    final uri = Uri.parse('$baseUrl/predict');
+    final uri = Uri.parse('$_base${AppConstants.predictEndpoint}');
     final body = jsonEncode(features.toJson());
 
     final response = await _client
@@ -36,7 +39,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
     if (response.statusCode == 200) {
       return PredictionResult.fromJson(jsonDecode(response.body));
     } else if (response.statusCode == 503) {
-      throw ModelNotLoadedException();
+      throw const ModelNotLoadedException();
     } else {
       throw PredictionException(
         'Prediction failed: ${response.statusCode}',
@@ -47,7 +50,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
-    final uri = Uri.parse('$baseUrl/predict/batch');
+    final uri = Uri.parse('$_base${AppConstants.predictBatchEndpoint}');
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
     });
@@ -66,7 +69,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
           .map((p) => (p as num).toDouble())
           .toList();
     } else if (response.statusCode == 503) {
-      throw ModelNotLoadedException();
+      throw const ModelNotLoadedException();
     } else {
       throw PredictionException(
         'Batch prediction failed: ${response.statusCode}',
@@ -77,7 +80,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<ModelInfo> getModelInfo() async {
-    final uri = Uri.parse('$baseUrl/model/info');
+    final uri = Uri.parse('$_base${AppConstants.modelInfoEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 
@@ -93,7 +96,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<ModelComparison>> getModelComparison() async {
-    final uri = Uri.parse('$baseUrl/model/comparison');
+    final uri = Uri.parse('$_base${AppConstants.modelComparisonEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 

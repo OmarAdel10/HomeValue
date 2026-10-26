@@ -1,4 +1,4 @@
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:home_value/features/prediction/data/models/prediction_result_model.dart';
 import 'package:home_value/features/prediction/domain/entities/prediction_result.dart';
 
@@ -18,11 +18,7 @@ void main() {
 
     group('fromEntity', () {
       test('creates model from entity correctly', () {
-        final model = PredictionResultModel.fromEntity(const PredictionResult(
-          prediction: 4.52,
-          model: 'RandomForestRegressor',
-          modelVersion: '1.0.0',
-        ));
+        final model = PredictionResultModel.fromEntity(testEntity);
 
         expect(model.prediction, 4.52);
         expect(model.model, 'RandomForestRegressor');
@@ -64,13 +60,7 @@ void main() {
 
     group('fromJson', () {
       test('deserializes from JSON correctly', () {
-        final json = {
-          'prediction': 4.52,
-          'model': 'RandomForestRegressor',
-          'model_version': '1.0.0',
-        };
-
-        final model = PredictionResultModel.fromJson(json);
+        final model = PredictionResultModel.fromJson(testJson);
 
         expect(model.prediction, 4.52);
         expect(model.model, 'RandomForestRegressor');

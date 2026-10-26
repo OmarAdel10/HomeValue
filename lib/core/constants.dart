@@ -1,9 +1,18 @@
 /// Application-wide constants for HomeValue Flutter app.
+library;
 
 class AppConstants {
   // API Configuration
   static const String apiBaseUrl = 'http://localhost:8000';
   static const Duration apiTimeout = Duration(seconds: 30);
+
+  // API Endpoints
+  static const String predictEndpoint = '/predict';
+  static const String predictBatchEndpoint = '/predict/batch';
+  static const String healthEndpoint = '/health';
+  static const String modelInfoEndpoint = '/model/info';
+  static const String modelComparisonEndpoint = '/model/comparison';
+  static const String trainEndpoint = '/train';
 
   // Feature field definitions for California Housing dataset
   static const List<String> featureNames = [

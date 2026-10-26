@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,8 +11,10 @@ from ml_backend.api.state import get_model
 router = APIRouter(prefix="/predict", tags=["prediction"])
 
 
-# California housing feature names in order
-CALIFORNIA_FEATURES = [
+# Numeric features the trained model consumes, in the order used at training time.
+# ``ocean_proximity`` is accepted in requests for API compatibility but is not part
+# of the California Housing dataset shipped by scikit-learn.
+MODEL_FEATURES = [
     "MedInc",
     "HouseAge",
     "AveRooms",
@@ -20,7 +23,6 @@ CALIFORNIA_FEATURES = [
     "AveOccup",
     "Latitude",
     "Longitude",
-    "ocean_proximity",
 ]
 
 OCEAN_PROXIMITY_VALUES = [
@@ -98,11 +100,13 @@ async def predict(request: PredictionRequest) -> PredictionResponse:
         )
 
     try:
-        # Convert request to feature array in correct order
-        features = [getattr(request, feature) for feature in CALIFORNIA_FEATURES]
-        features_array = [features]  # Single sample
+        # Build a DataFrame with the named columns the pipeline was fitted on.
+        features_frame = pd.DataFrame(
+            [[getattr(request, feature) for feature in MODEL_FEATURES]],
+            columns=MODEL_FEATURES,
+        )
 
-        prediction = model.predict(features_array)[0]
+        prediction = model.predict(features_frame)[0]
 
         return PredictionResponse(
             prediction=float(prediction),
@@ -134,12 +138,15 @@ async def predict_batch(request: BatchPredictionRequest) -> BatchPredictionRespo
         )
 
     try:
-        # Convert list of feature dicts to 2D array
-        features_array = [
-            [sample[feature] for feature in CALIFORNIA_FEATURES] for sample in request.features
-        ]
+        # Build a DataFrame with the named columns the pipeline was fitted on.
+        features_frame = pd.DataFrame(
+            [
+                {feature: sample[feature] for feature in MODEL_FEATURES}
+                for sample in request.features
+            ]
+        )
 
-        predictions = model.predict(features_array)
+        predictions = model.predict(features_frame)
 
         return BatchPredictionResponse(
             predictions=[float(p) for p in predictions],

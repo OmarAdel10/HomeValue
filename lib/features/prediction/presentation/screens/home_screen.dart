@@ -80,12 +80,12 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings),
-                onPressed: () => context.go('/settings'),
+                onPressed: () => context.push('/settings'),
                 tooltip: 'Settings',
               ),
               IconButton(
                 icon: const Icon(Icons.compare_arrows),
-                onPressed: () => context.go('/comparison'),
+                onPressed: () => context.push('/comparison'),
                 tooltip: 'Model Comparison',
               ),
             ],
@@ -197,7 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildOceanProximitySelector() {
     return DropdownButtonFormField<OceanProximity>(
-      value: _selectedOceanProximity,
+      key: const Key('ocean_proximity_dropdown'),
+      initialValue: _selectedOceanProximity,
       decoration: InputDecoration(
         labelText: AppConstants.featureLabels[AppConstants.oceanProximityField],
         prefixIcon: const Icon(Icons.waves),

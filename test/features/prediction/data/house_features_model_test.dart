@@ -1,4 +1,4 @@
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:home_value/features/prediction/data/models/house_features_model.dart';
 import 'package:home_value/features/prediction/domain/entities/house_features.dart';
 
@@ -30,17 +30,7 @@ void main() {
 
     group('fromEntity', () {
       test('creates model from entity correctly', () {
-        final model = HouseFeaturesModel.fromEntity(HouseFeatures(
-          medInc: 8.3252,
-          houseAge: 41.0,
-          aveRooms: 6.984127,
-          aveBedrms: 1.02381,
-          population: 322.0,
-          aveOccup: 2.555556,
-          latitude: 37.88,
-          longitude: -122.23,
-          oceanProximity: OceanProximity.nearBay,
-        ));
+        final model = HouseFeaturesModel.fromEntity(testEntity);
 
         expect(model.medInc, 8.3252);
         expect(model.houseAge, 41.0);
@@ -112,19 +102,7 @@ void main() {
 
     group('fromJson', () {
       test('deserializes from JSON correctly', () {
-        final json = {
-          'MedInc': 8.3252,
-          'HouseAge': 41.0,
-          'AveRooms': 6.984127,
-          'AveBedrms': 1.02381,
-          'Population': 322.0,
-          'AveOccup': 2.555556,
-          'Latitude': 37.88,
-          'Longitude': -122.23,
-          'ocean_proximity': 'NEAR BAY',
-        };
-
-        final model = HouseFeaturesModel.fromJson(json);
+        final model = HouseFeaturesModel.fromJson(testJson);
 
         expect(model.medInc, 8.3252);
         expect(model.houseAge, 41.0);
