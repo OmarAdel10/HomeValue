@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
@@ -83,8 +84,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   void _maybeStartAutoRetrain(AppSettings settings) {
     _autoRetrainTimer?.cancel();
     if (settings.autoRetrain) {
-      _autoRetrainTimer =
-          Timer.periodic(_retrainInterval, (_) => _triggerRetrain());
+      _autoRetrainTimer = Timer.periodic(_retrainInterval, (_) => _triggerRetrain());
       // Also trigger immediately on enable
       _triggerRetrain();
     }
@@ -98,7 +98,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       await http.post(uri).timeout(const Duration(minutes: 10));
     } catch (e) {
       // Log error but don't crash the app
-      print('Auto-retrain failed: $e');
+      log('Auto-retrain failed: $e');
     }
   }
 }
