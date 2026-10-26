@@ -1,12 +1,13 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/prediction_result.dart';
-import '../../domain/repositories/prediction_repository.dart';
+import '../../domain/repositories/prediction_repository.dart'
+    as repo; // Domain ModelComparison
 import 'prediction_event.dart';
 import 'prediction_state.dart';
 
 class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
-  final PredictionRepository repository;
+  final repo.PredictionRepository repository;
 
   PredictionBloc({required this.repository})
       : super(const PredictionInitial()) {
@@ -37,22 +38,19 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
   ) async {
     emit(const PredictionLoading());
     try {
-      await repository.predictBatch(event.features);
-      // For batch, we emit the first prediction as success
-      if (event.features.isNotEmpty) {
-        // Note: Batch prediction returns list of doubles, not full PredictionResult
-        // We'll create a dummy result for the first prediction
-        emit(PredictionSuccess(
-          PredictionResult(
-            prediction: event.features.isNotEmpty ? 0.0 : 0.0,
-            model: 'batch',
-            modelVersion: '1.0.0',
-          ),
-        ));
-      } else {
-        emit(const PredictionFailure(
-            'No features provided for batch prediction'));
+      final predictions = await repository.predictBatch(event.features);
+      if (predictions.isEmpty) {
+        emit(const PredictionFailure('No features provided for batch prediction'));
+        return;
       }
+      final results = predictions
+          .map((p) => PredictionResult(
+                prediction: p,
+                model: 'best_model.joblib',
+                modelVersion: '1.0.0',
+              ))
+          .toList();
+      emit(BatchPredictionSuccess(results));
     } catch (e) {
       emit(PredictionFailure(e.toString()));
     }
@@ -91,7 +89,21 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     LoadModelComparison event,
     Emitter<PredictionState> emit,
   ) async {
-    // Not implemented yet
-    emit(const ModelComparisonLoaded([]));
+    try {
+      final domainModels = await repository.getModelComparison();
+      final models = domainModels
+          .map((m) => ModelComparison(
+                model: m.model,
+                rmse: m.rmse,
+                mae: m.mae,
+                r2: m.r2,
+                cvRmse: m.cvRmse,
+                cvRmseStd: m.cvRmseStd,
+              ))
+          .toList();
+      emit(ModelComparisonLoaded(models));
+    } catch (e) {
+      emit(PredictionFailure(e.toString()));
+    }
   }
 }
