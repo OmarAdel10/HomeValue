@@ -65,14 +65,14 @@ if [ ! -f "$MODEL_PATH" ]; then
     }
 fi
 
-# Start server in background
-python -m uvicorn ml_backend.server:app --host 0.0.0.0 --port 8000 &
+# Start server in background (bind to localhost only for security)
+python -m uvicorn ml_backend.server:app --host 127.0.0.1 --port 8000 &
 SERVER_PID=$!
 
 # Wait for server to be ready
 echo -e "${YELLOW}Waiting for server to be ready...${NC}"
 for i in {1..30}; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    if curl -fsS http://127.0.0.1:8000/health | grep -q '"status":"ok"'; then
         echo -e "${GREEN}Server is ready!${NC}"
         break
     fi
@@ -85,7 +85,7 @@ done
 
 # Verify model is loaded
 echo -e "${YELLOW}Verifying model is loaded...${NC}"
-MODEL_INFO=$(curl -s http://localhost:8000/model/info)
+MODEL_INFO=$(curl -fsS http://127.0.0.1:8000/model/info)
 if echo "$MODEL_INFO" | grep -q '"loaded":true'; then
     echo -e "${GREEN}Model loaded successfully${NC}"
 else
@@ -109,4 +109,4 @@ flutter test integration_test/app_test.dart -d linux --timeout=120s || {
     exit 1
 }
 
-echo -e "${GREEN}=== All E2E tests passed! ===${NC}"
+echo -e "${GREEN}=== All E2E tests passed! ===${NC}
