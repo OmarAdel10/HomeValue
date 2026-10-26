@@ -1,12 +1,13 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/prediction_result.dart';
-import '../../domain/repositories/prediction_repository.dart';
+import '../../domain/repositories/prediction_repository.dart'
+    as repo; // Domain ModelComparison
 import 'prediction_event.dart';
 import 'prediction_state.dart';
 
 class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
-  final PredictionRepository repository;
+  final repo.PredictionRepository repository;
 
   PredictionBloc({required this.repository})
       : super(const PredictionInitial()) {
@@ -91,7 +92,21 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     LoadModelComparison event,
     Emitter<PredictionState> emit,
   ) async {
-    // Not implemented yet
-    emit(const ModelComparisonLoaded([]));
+    try {
+      final domainModels = await repository.getModelComparison();
+      final models = domainModels
+          .map((m) => ModelComparison(
+                model: m.model,
+                rmse: m.rmse,
+                mae: m.mae,
+                r2: m.r2,
+                cvRmse: m.cvRmse,
+                cvRmseStd: m.cvRmseStd,
+              ))
+          .toList();
+      emit(ModelComparisonLoaded(models));
+    } catch (e) {
+      emit(PredictionFailure(e.toString()));
+    }
   }
 }
