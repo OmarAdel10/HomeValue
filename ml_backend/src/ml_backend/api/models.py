@@ -1,6 +1,7 @@
 """FastAPI router for model info and comparison endpoints."""
 
 import json
+from typing import Any, cast
 
 from fastapi import APIRouter
 
@@ -10,17 +11,17 @@ from ml_backend.config import Config
 router = APIRouter(prefix="/model", tags=["model"])
 
 
-def _load_comparison() -> list[dict]:
+def _load_comparison() -> list[dict[str, Any]]:
     """Load model comparison data from disk."""
     config = Config()
     comparison_path = config.models_dir / "model_comparison.json"
     if comparison_path.exists():
         with open(comparison_path) as f:
-            return json.load(f)
+            return cast(list[dict[str, Any]], json.load(f))
     return []
 
 
-def _save_comparison(models: list[dict]) -> None:
+def _save_comparison(models: list[dict[str, Any]]) -> None:
     """Save model comparison data to disk."""
     config = Config()
     config.ensure_dirs()
@@ -30,7 +31,7 @@ def _save_comparison(models: list[dict]) -> None:
 
 
 @router.get("/info")
-async def model_info() -> dict:
+async def model_info() -> dict[str, Any]:
     """Get information about the currently loaded model.
 
     Returns:
@@ -50,7 +51,7 @@ async def model_info() -> dict:
 
 
 @router.get("/comparison")
-async def model_comparison() -> dict:
+async def model_comparison() -> dict[str, Any]:
     """Get comparison metrics for all trained models.
 
     Returns:
