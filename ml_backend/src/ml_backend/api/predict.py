@@ -1,7 +1,5 @@
 """FastAPI router for prediction endpoints."""
 
-from typing import Any
-
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator

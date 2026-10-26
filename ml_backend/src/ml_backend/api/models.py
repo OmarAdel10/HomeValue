@@ -1,7 +1,6 @@
 """FastAPI router for model info and comparison endpoints."""
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter
 
