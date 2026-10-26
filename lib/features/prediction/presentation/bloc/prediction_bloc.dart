@@ -40,7 +40,8 @@ class PredictionBloc extends Bloc<PredictionEvent, PredictionState> {
     try {
       final predictions = await repository.predictBatch(event.features);
       if (predictions.isEmpty) {
-        emit(const PredictionFailure('No features provided for batch prediction'));
+        emit(const PredictionFailure(
+            'No features provided for batch prediction'));
         return;
       }
       final results = predictions
