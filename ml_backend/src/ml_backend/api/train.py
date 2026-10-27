@@ -38,7 +38,7 @@ def _save_comparison(
     comparison = []
     for name, pipeline in all_models.items():
         metrics = evaluate_model(pipeline, X_test_enc, y_test_np)
-        cv_results = cross_validate_model(pipeline, X_test_enc, y_test_np, cv=Config().cv_folds)
+        cv_results = cross_validate_model(pipeline, X_test_enc, y_test_np, cv=config.cv_folds)
         is_best = False  # Will be updated after best model selection
         comparison.append(
             {
