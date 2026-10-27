@@ -65,3 +65,8 @@ Plane project `HOME` (HomeValue).
 - Pytest config now lives only in the repo root `pytest.ini`. Adding another inifile
   under `ml_backend/` would split `rootdir` discovery again and reintroduce unknown
   marker warnings.
+- **HOME-37** — `ml_backend/tests/test_integration.py::TestFullPipeline` loads the
+  California housing dataset over the network but carries no `integration` marker, so
+  CI always fetches and deserializes a remote artifact. Add markers plus a dedicated
+  CI job once coverage is measured: excluding those tests drops total coverage below
+  the 95% gate (91.14%).
