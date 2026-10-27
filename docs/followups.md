@@ -68,5 +68,5 @@ Plane project `HOME` (HomeValue).
 - **HOME-37** — `ml_backend/tests/test_integration.py::TestFullPipeline` loads the
   California housing dataset over the network but carries no `integration` marker, so
   CI always fetches and deserializes a remote artifact. Add markers plus a dedicated
-  CI job once coverage is measured: excluding those tests drops total coverage below
-  the 95% gate (91.14%).
+  CI job once coverage is measured: total coverage is 91.67% against a 95% gate
+  today, and excluding those tests drops it further to 91.14%.
