@@ -23,10 +23,16 @@ class SettingsLocalDataSource {
     final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
     final themeModeIndex = _prefs.getInt(_themeModeKey) ?? _defaultThemeMode;
     final autoRetrain = _prefs.getBool(_autoRetrainKey) ?? _defaultAutoRetrain;
+    DateTime? lastAutoRetrainAt;
     final lastAutoRetrainMillis = _prefs.getInt(_lastAutoRetrainKey);
-    final lastAutoRetrainAt = lastAutoRetrainMillis == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(lastAutoRetrainMillis);
+    if (lastAutoRetrainMillis != null) {
+      try {
+        lastAutoRetrainAt =
+            DateTime.fromMillisecondsSinceEpoch(lastAutoRetrainMillis);
+      } on Object {
+        lastAutoRetrainAt = null;
+      }
+    }
 
     final themeMode =
         themeModeIndex >= 0 && themeModeIndex < ThemeMode.values.length

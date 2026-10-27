@@ -79,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Check that the local server is reachable, then try again.',
+              'Could not read local settings. Try again.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -140,9 +140,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           context.read<SettingsBloc>().add(
                                 UpdateServerUrl(_urlController.text.trim()),
                               );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Server URL updated')),
-                          );
                         }
                       },
                       child: const Text('Save Server URL'),

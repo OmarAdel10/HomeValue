@@ -33,6 +33,9 @@ void main() {
       mockClient = MockClient(
         (_) async => http.Response('{"status": "ok"}', 200),
       );
+      when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
+        (_) async => AppSettings.defaults(),
+      );
       settingsBloc = SettingsBloc(
         repository: mockRepository,
         httpClient: mockClient,
@@ -302,7 +305,7 @@ void main() {
       expect(find.text('Could not load settings'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
       expect(
-        find.text('Check that the local server is reachable, then try again.'),
+        find.text('Could not read local settings. Try again.'),
         findsOneWidget,
       );
       expect(find.text('Could not update settings'), findsNothing);
