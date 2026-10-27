@@ -44,14 +44,15 @@ jobs:
         run: |
           mypy src
 
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=ml_backend --cov-report=xml --cov-fail-under=95
-
       - name: Verify pytest config from repository root
         working-directory: .
         run: |
-          python -m pytest --collect-only -q
+          test ! -e ml_backend/pytest.ini
+          python -m pytest --collect-only --strict-markers
+
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=ml_backend --cov-report=xml --cov-fail-under=95
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
