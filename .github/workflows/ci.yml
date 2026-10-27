@@ -48,6 +48,11 @@ jobs:
         run: |
           pytest --cov=ml_backend --cov-report=xml --cov-fail-under=95
 
+      - name: Verify pytest config from repository root
+        working-directory: .
+        run: |
+          python -m pytest --collect-only -q
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
