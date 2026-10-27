@@ -19,7 +19,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
 
   Timer? _autoRetrainTimer;
   AppSettings? _lastKnownSettings;
+  DateTime? _lastAttemptAt;
   bool _retrainInFlight = false;
+  int _failureCount = 0;
 
   SettingsBloc({
     required this.repository,
@@ -56,7 +58,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       emit(SettingsLoaded(settings));
       _syncTimer(settings.autoRetrain);
     } catch (e) {
-      emit(SettingsFailure(e.toString(), isLoadFailure: true));
+      emit(_failure(e, isLoadFailure: true));
     }
   }
 
@@ -69,7 +71,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
     } catch (e) {
-      emit(SettingsFailure(e.toString()));
+      emit(_failure(e));
     }
   }
 
@@ -82,7 +84,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
     } catch (e) {
-      emit(SettingsFailure(e.toString()));
+      emit(_failure(e));
     }
   }
 
@@ -102,8 +104,17 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         unawaited(_triggerRetrain());
       }
     } catch (e) {
-      emit(SettingsFailure(e.toString()));
+      emit(_failure(e));
     }
+  }
+
+  SettingsFailure _failure(Object error, {bool isLoadFailure = false}) {
+    _failureCount++;
+    return SettingsFailure(
+      error.toString(),
+      isLoadFailure: isLoadFailure,
+      attempt: _failureCount,
+    );
   }
 
   bool get _isEnabled {
@@ -132,9 +143,37 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       return;
     }
     final now = _now();
-    final lastRun = settings.lastAutoRetrainAt;
-    final nextRun = lastRun == null ? now : lastRun.add(retrainInterval);
-    _armTimer(nextRun.isAfter(now) ? nextRun.difference(now) : Duration.zero);
+    DateTime? nextRun;
+    for (final stamp in <DateTime?>[
+      settings.lastAutoRetrainAt,
+      _lastAttemptAt,
+    ]) {
+      if (stamp == null) {
+        continue;
+      }
+      final candidate = stamp.add(retrainInterval);
+      if (nextRun == null || candidate.isAfter(nextRun)) {
+        nextRun = candidate;
+      }
+    }
+    _armTimer(
+      nextRun == null || !nextRun.isAfter(now)
+          ? Duration.zero
+          : nextRun.difference(now),
+    );
+  }
+
+  bool _isRetrainDue(AppSettings settings) {
+    final now = _now();
+    final lastSuccess = settings.lastAutoRetrainAt;
+    if (lastSuccess != null && now.difference(lastSuccess) < retrainInterval) {
+      return false;
+    }
+    final lastAttempt = _lastAttemptAt;
+    if (lastAttempt != null && now.difference(lastAttempt) < retrainInterval) {
+      return false;
+    }
+    return true;
   }
 
   void _armTimer(Duration delay) {
@@ -162,14 +201,15 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       return;
     }
     _retrainInFlight = true;
-    var failed = false;
+    var attemptStarted = false;
     Uri? uri;
     try {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
-      if (!settings.autoRetrain) {
+      if (!settings.autoRetrain || !_isRetrainDue(settings)) {
         return;
       }
+      attemptStarted = true;
       uri = _trainUri(settings.serverUrl);
       final response =
           await _httpClient.post(uri).timeout(const Duration(minutes: 10));
@@ -178,18 +218,15 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
     } catch (e) {
-      failed = true;
       // Log outcome only; never log the URL or raw exception text.
       log('Auto-retrain failed: ${e.runtimeType} ${uri?.path ?? ''}');
     } finally {
       _retrainInFlight = false;
+      if (attemptStarted) {
+        _lastAttemptAt = _now();
+      }
       if (_isEnabled) {
-        final recorded = _lastKnownSettings?.lastAutoRetrainAt != null;
-        if (failed || !recorded) {
-          _armTimer(retrainInterval);
-        } else {
-          _scheduleNextRetrain();
-        }
+        _scheduleNextRetrain();
       }
     }
   }

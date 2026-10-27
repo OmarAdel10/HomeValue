@@ -375,11 +375,33 @@ void main() {
         verify(() => mockRepository.updateLastAutoRetrain(any())).called(1);
       },
     );
+
+    test('emits a fresh failure for a repeated identical error', () async {
+      when(() => mockRepository.updateThemeMode(any()))
+          .thenThrow(Exception('disk unavailable'));
+      final bloc = SettingsBloc(repository: mockRepository);
+      addTearDown(bloc.close);
+
+      final seen = <SettingsState>[];
+      final subscription = bloc.stream.listen(seen.add);
+      addTearDown(subscription.cancel);
+
+      bloc.add(const ToggleTheme(ThemeMode.dark));
+      await pumpEventQueue();
+      bloc.add(const ToggleTheme(ThemeMode.dark));
+      await pumpEventQueue();
+
+      final failures = seen.whereType<SettingsFailure>().toList();
+      expect(failures, hasLength(2));
+      expect(failures.last.attempt, greaterThan(failures.first.attempt));
+      expect(failures.last.isLoadFailure, isFalse);
+    });
   });
 
   group('SettingsBloc auto retrain scheduling', () {
     late MockSettingsRepository mockRepository;
     late RetrainRecorder recorder;
+    late DateTime current;
 
     const enabledSettings = AppSettings(
       serverUrl: 'http://localhost:8000',
@@ -393,7 +415,16 @@ void main() {
       autoRetrain: true,
     );
 
+    DateTime clock() => current;
+
+    void advance(FakeAsync async, Duration duration) {
+      current = current.add(duration);
+      async.elapse(duration);
+      async.flushMicrotasks();
+    }
+
     setUp(() {
+      current = DateTime(2026, 10, 27, 12);
       mockRepository = MockSettingsRepository();
       recorder = RetrainRecorder();
       when(() => mockRepository.getSettings()).thenAnswer(
@@ -403,7 +434,9 @@ void main() {
         (_) async => enabledDarkSettings,
       );
       when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
-        (_) async => enabledSettings,
+        (invocation) async => enabledSettings.copyWith(
+          lastAutoRetrainAt: invocation.positionalArguments.first as DateTime,
+        ),
       );
     });
 
@@ -413,25 +446,87 @@ void main() {
 
     test('keeps the 24h schedule across theme changes', () {
       fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 1));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
+        when(() => mockRepository.updateThemeMode(any())).thenAnswer(
+          (_) async => enabledDarkSettings.copyWith(
+            lastAutoRetrainAt: lastRun,
+          ),
+        );
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+
+        advance(async, const Duration(hours: 22, minutes: 59));
+        bloc.add(const ToggleTheme(ThemeMode.dark));
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+
+        advance(async, const Duration(minutes: 1));
+        expect(recorder.requests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('waits for the window when auto retrain is turned on', () {
+      fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 1));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
+        when(() => mockRepository.updateAutoRetrain(true)).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const ToggleAutoRetrain(true));
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsLoaded>());
+        expect(recorder.requests, isEmpty);
+
+        advance(async, const Duration(hours: 23));
+        expect(recorder.requests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('retrains right away when the window is already overdue', () {
+      fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 25));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
+
         expect(recorder.requests, hasLength(1));
-
-        async.elapse(const Duration(hours: 23, minutes: 59));
-        bloc.add(const ToggleTheme(ThemeMode.dark));
-        async.flushMicrotasks();
-        async.elapse(const Duration(minutes: 1));
-        async.flushMicrotasks();
-
-        expect(recorder.requests, hasLength(2));
 
         bloc.close();
         async.flushMicrotasks();
@@ -443,11 +538,11 @@ void main() {
         when(() => mockRepository.updateAutoRetrain(false)).thenAnswer(
           (_) async => enabledSettings.copyWith(autoRetrain: false),
         );
-
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
@@ -458,8 +553,7 @@ void main() {
 
         bloc.add(const ToggleAutoRetrain(false));
         async.flushMicrotasks();
-        async.elapse(const Duration(hours: 48));
-        async.flushMicrotasks();
+        advance(async, const Duration(hours: 48));
 
         expect(recorder.requests, hasLength(1));
 
@@ -470,10 +564,15 @@ void main() {
 
     test('stopping the timer on close prevents further retrains', () {
       fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 25));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
@@ -484,28 +583,39 @@ void main() {
 
         bloc.close();
         async.flushMicrotasks();
-        async.elapse(const Duration(hours: 48));
-        async.flushMicrotasks();
+        advance(async, const Duration(hours: 48));
 
         expect(recorder.requests, hasLength(1));
       });
     });
 
-    test('ignores a transport failure and keeps the timer alive', () {
+    test('retries a transport failure only after a full window', () {
       fakeAsync((async) {
-        final failingClient = MockClient(
-          (_) async => throw http.ClientException('backend down'),
-        );
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: failingClient,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(const Duration(hours: 48));
+        async.elapse(Duration.zero);
         async.flushMicrotasks();
+        expect(failingRequests, hasLength(1));
+
+        advance(async, const Duration(hours: 1));
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(1));
+
+        advance(async, const Duration(hours: 23));
+        expect(failingRequests, hasLength(2));
 
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
         expect(bloc.state, isA<SettingsLoaded>());
@@ -519,13 +629,14 @@ void main() {
       fakeAsync((async) {
         when(() => mockRepository.getSettings()).thenAnswer(
           (_) async => enabledSettings.copyWith(
-            serverUrl: 'http://localhost:8000/api',
+            serverUrl: 'http://localhost:8000/api//',
           ),
         );
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
@@ -545,27 +656,82 @@ void main() {
 
     test('does not record success when the backend rejects the retrain', () {
       fakeAsync((async) {
+        final requests = <http.Request>[];
         final rejectingClient = MockClient((request) async {
-          recorder.requests.add(request);
+          requests.add(request);
           return http.Response('training failed', 500);
         });
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: rejectingClient,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        expect(recorder.requests, hasLength(1));
+        expect(requests, hasLength(1));
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
 
-        async.elapse(const Duration(hours: 24));
-        async.flushMicrotasks();
-        expect(recorder.requests, hasLength(2));
+        advance(async, const Duration(hours: 24));
+        expect(requests, hasLength(2));
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('treats a redirect as a rejected retrain', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final redirectingClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 302);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: redirectingClient,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+
+        expect(requests, hasLength(1));
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('records success for a 204 response', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final noContentClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 204);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: noContentClient,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+
+        expect(requests, hasLength(1));
+        verify(() => mockRepository.updateLastAutoRetrain(current)).called(1);
 
         bloc.close();
         async.flushMicrotasks();
@@ -574,37 +740,25 @@ void main() {
 
     test('schedules the next retrain from the stored run time', () {
       fakeAsync((async) {
-        var current = DateTime(2026, 10, 27, 12);
+        final lastRun = current.subtract(const Duration(hours: 23));
         when(() => mockRepository.getSettings()).thenAnswer(
-          (_) async => enabledSettings.copyWith(
-            lastAutoRetrainAt: current.subtract(const Duration(hours: 23)),
-          ),
-        );
-        when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
-          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: current),
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
         );
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
-          now: () => current,
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
-        async.flushMicrotasks();
         expect(recorder.requests, isEmpty);
 
-        async.elapse(const Duration(minutes: 59));
-        current = current.add(const Duration(minutes: 59));
+        advance(async, const Duration(minutes: 59));
         expect(recorder.requests, isEmpty);
 
-        async.elapse(const Duration(minutes: 1));
-        current = current.add(const Duration(minutes: 1));
-        async.flushMicrotasks();
-        async.elapse(Duration.zero);
-        async.flushMicrotasks();
+        advance(async, const Duration(minutes: 1));
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -614,32 +768,25 @@ void main() {
 
     test('keeps the remaining window when settings are reloaded', () {
       fakeAsync((async) {
-        var current = DateTime(2026, 10, 27, 12);
         final lastRun = current.subtract(const Duration(hours: 23));
         when(() => mockRepository.getSettings()).thenAnswer(
           (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
-        );
-        when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
-          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: current),
         );
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
-          now: () => current,
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(const Duration(minutes: 30));
-        current = current.add(const Duration(minutes: 30));
+        advance(async, const Duration(minutes: 30));
         expect(recorder.requests, isEmpty);
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(const Duration(minutes: 30));
-        current = current.add(const Duration(minutes: 30));
-        async.flushMicrotasks();
+        advance(async, const Duration(minutes: 30));
 
         expect(recorder.requests, hasLength(1));
 
@@ -650,11 +797,9 @@ void main() {
 
     test('keeps the timer running when a toggle fails', () {
       fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 23));
         when(() => mockRepository.getSettings()).thenAnswer(
-          (_) async => enabledSettings.copyWith(
-            lastAutoRetrainAt:
-                DateTime.now().subtract(const Duration(hours: 23)),
-          ),
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
         );
         when(() => mockRepository.updateAutoRetrain(any()))
             .thenThrow(Exception('disk unavailable'));
@@ -662,11 +807,10 @@ void main() {
           repository: mockRepository,
           httpClient: recorder.client,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
-        async.flushMicrotasks();
-        async.elapse(Duration.zero);
         async.flushMicrotasks();
         expect(recorder.requests, isEmpty);
 
@@ -674,9 +818,7 @@ void main() {
         async.flushMicrotasks();
         expect(bloc.state, isA<SettingsFailure>());
 
-        async.elapse(const Duration(hours: 1));
-        async.flushMicrotasks();
-
+        advance(async, const Duration(hours: 1));
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -686,6 +828,7 @@ void main() {
 
     test('skips a retrain while one is already in flight', () {
       fakeAsync((async) {
+        final lastRun = current.subtract(const Duration(hours: 25));
         final gate = Completer<http.Response>();
         final requests = <http.Request>[];
         final gatedClient = MockClient((request) {
@@ -693,14 +836,14 @@ void main() {
           return gate.future;
         });
 
-        when(() => mockRepository.updateAutoRetrain(any())).thenAnswer(
-          (_) async => enabledSettings,
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
         );
-
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: gatedClient,
           retrainInterval: const Duration(hours: 24),
+          now: clock,
         );
 
         bloc.add(const LoadSettings());
@@ -709,15 +852,17 @@ void main() {
         async.flushMicrotasks();
         expect(requests, hasLength(1));
 
-        bloc.add(const ToggleAutoRetrain(false));
+        bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        bloc.add(const ToggleAutoRetrain(true));
+        async.elapse(Duration.zero);
         async.flushMicrotasks();
-
         expect(requests, hasLength(1));
 
         gate.complete(http.Response('{"status": "ok"}', 200));
         async.flushMicrotasks();
+
+        advance(async, const Duration(hours: 24));
+        expect(requests, hasLength(2));
 
         bloc.close();
         async.flushMicrotasks();
