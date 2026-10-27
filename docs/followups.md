@@ -53,3 +53,15 @@ Plane project `HOME` (HomeValue).
   naming the column. Add a pandas `infer_dtype` guard before Ames CSV ingestion.
 - `_to_object_with_nan` is referenced by `FunctionTransformer`; promote it to a public
   symbol before model artifacts pickle the preprocessing pipeline (HOME-7/HOME-12).
+
+## Pytest warning cleanup (2026-10-27)
+
+- **HOME-35** — `ml_backend/tests/conftest.py:24-25` and
+  `ml_backend/tests/test_selection.py:18` call `warnings.filterwarnings` at import
+  time, suppressing `invalid value encountered in divide` for the whole pytest
+  process. Collapse to the scoped autouse fixture at `conftest.py:14-21`.
+- **HOME-36** — `.gitignore` ignores `/coverage/` but not `.coverage`; a root-level
+  `pytest --cov` run leaves an untracked artifact. Add `.coverage` and `.coverage.*`.
+- Pytest config now lives only in the repo root `pytest.ini`. Adding another inifile
+  under `ml_backend/` would split `rootdir` discovery again and reintroduce unknown
+  marker warnings.
