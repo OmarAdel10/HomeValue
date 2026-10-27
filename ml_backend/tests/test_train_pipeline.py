@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import joblib
+import numpy as np
 from sklearn.dummy import DummyRegressor
 from sklearn.pipeline import Pipeline
 
@@ -19,6 +20,7 @@ from ml_backend.api.train import (
     run_full_training_pipeline,
 )
 from ml_backend.config import Config
+from ml_backend.models.evaluation import cross_validate_model
 
 
 def _constant(value: float) -> DummyRegressor:
@@ -74,6 +76,10 @@ def _patched_training_stages(X, y, models):
         patch(
             "ml_backend.api.train.tune_gradient_boosting", return_value=models["gradient_boosting"]
         ) as tune_gb,
+        patch(
+            "ml_backend.api.train.cross_validate_model",
+            wraps=cross_validate_model,
+        ) as cross_validate,
     ):
         yield SimpleNamespace(
             load_data=load_data,
@@ -82,13 +88,14 @@ def _patched_training_stages(X, y, models):
             ensembles=ensembles,
             tune_rf=tune_rf,
             tune_gb=tune_gb,
+            cross_validate=cross_validate,
         )
 
 
 def test_run_full_training_pipeline_persists_artifact_and_comparison(
     sample_housing_data, sample_target, tmp_path
 ):
-    config = Config(project_root=tmp_path)
+    config = Config(project_root=tmp_path, cv_folds=2)
     models = _trained_models()
 
     with _patched_training_stages(sample_housing_data, sample_target, models) as stages:
@@ -101,6 +108,16 @@ def test_run_full_training_pipeline_persists_artifact_and_comparison(
     stages.tune_rf.assert_called_once()
     stages.tune_gb.assert_called_once()
 
+    # Training stages receive the encoded matrix, not the raw frame.
+    encoded_train = stages.baselines.call_args.args[0]
+    assert isinstance(encoded_train, np.ndarray)
+    assert encoded_train.shape[0] == len(sample_housing_data) * (1 - config.test_size)
+    assert encoded_train.shape[1] > sample_housing_data.shape[1]
+
+    # Every comparison and selection CV run honours the injected fold count.
+    assert stages.cross_validate.call_count == len(_model_names(models)) + 1
+    assert {call.kwargs["cv"] for call in stages.cross_validate.call_args_list} == {2}
+
     # The ensemble stage receives unfitted base estimators keyed for the API.
     base_estimators = stages.ensembles.call_args.args[3]
     assert set(base_estimators) == {"rf", "ridge", "enet"}
@@ -111,13 +128,17 @@ def test_run_full_training_pipeline_persists_artifact_and_comparison(
     assert isinstance(result["cv_rmse_std"], float)
     assert result["cv_rmse"] >= 0.0
 
-    # The artifact bundles preprocessing with the winning estimator.
+    # The artifact bundles preprocessing with the winning estimator and can
+    # score raw feature rows without a separate preprocessing step.
     artifact_path = config.models_dir / "best_model.joblib"
     assert result["artifact"] == str(artifact_path)
     assert artifact_path.is_file()
     artifact = joblib.load(artifact_path)
     assert isinstance(artifact, Pipeline)
     assert list(artifact.named_steps) == ["preprocessing", "model"]
+    predictions = artifact.predict(sample_housing_data.iloc[:2])
+    assert len(predictions) == 2
+    assert np.isfinite(predictions).all()
 
     # Every candidate is recorded, and exactly the winner is flagged.
     with open(config.models_dir / "model_comparison.json") as handle:
