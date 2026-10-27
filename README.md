@@ -75,7 +75,7 @@ graph TD
 - **Tuned Models**: RandomForest (RandomizedSearchCV), GradientBoosting (RandomizedSearchCV)
 - **Model Selection**: RMSE-based best model selection, joblib serialization
 - **FastAPI Endpoints**: `/predict`, `/predict/batch`, `/health`, `/model/info`, `/model/comparison`, `/train`
-- **Tests**: 246 tests, 95.6% coverage
+- **Tests**: 250 tests, 96.7% coverage
 
 ### Flutter Desktop App (Linux)
 - **Architecture**: MVVM + BLoC with GetIt dependency injection

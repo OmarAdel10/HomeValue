@@ -68,5 +68,20 @@ Plane project `HOME` (HomeValue).
 - **HOME-37** — `ml_backend/tests/test_integration.py::TestFullPipeline` loads the
   California housing dataset over the network but carries no `integration` marker, so
   CI always fetches and deserializes a remote artifact. Add markers plus a dedicated
-  CI job once coverage is measured: total coverage is 91.67% against a 95% gate
-  today, and excluding those tests drops it further to 91.14%.
+  CI job once measured: total coverage is 96.67% with these tests included and stays
+  96.67% when they are excluded, so the cost is runtime (roughly 75% of the suite)
+  rather than uncovered lines.
+
+## Coverage remediation review (2026-10-27)
+
+- **HOME-39** — `lib/features/settings/presentation/bloc/settings_bloc.dart:84-92`
+  invoked `_maybeStartAutoRetrain` from every settings handler, so changing theme or
+  the server URL issued `POST /train` and reset the 24h timer. Also unhandled:
+  `SettingsFailure` is never rendered in `settings_screen.dart:35,45`.
+- **HOME-40** — `ml_backend/src/ml_backend/api/models.py:24-30` exposes a dead
+  `_save_comparison` duplicate, and `tests/test_models_api.py:51-63` asserts metrics
+  only behind `if data["models"]`, so the populated `/model/comparison` path
+  (`models.py:18-20`) is never exercised.
+- **HOME-41** — `ml_backend/src/ml_backend/api/predict.py:69-84` batch validation is
+  untested: defaulted `ocean_proximity`, rejected invalid category, and the 1000
+  sample cap have no cases in `tests/test_predict_api.py`.
