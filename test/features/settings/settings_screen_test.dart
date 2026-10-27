@@ -20,6 +20,7 @@ void main() {
       autoRetrain: false,
     ));
     registerFallbackValue(ThemeMode.system);
+    registerFallbackValue(DateTime(2026));
   });
 
   group('SettingsScreen', () {
@@ -300,8 +301,11 @@ void main() {
 
       expect(find.text('Could not load settings'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
-      expect(find.textContaining('disk unavailable'), findsOneWidget);
-      expect(find.text('Could not update settings'), findsOneWidget);
+      expect(
+        find.text('Check that the local server is reachable, then try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('Could not update settings'), findsNothing);
 
       when(() => mockRepository.getSettings()).thenAnswer(
         (_) async => testSettings,
@@ -314,6 +318,41 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Server URL'), findsOneWidget);
+    });
+
+    testWidgets('keeps the form and shows a snackbar when an update fails',
+        (WidgetTester tester) async {
+      const testSettings = AppSettings(
+        serverUrl: 'http://localhost:8000',
+        themeMode: ThemeMode.system,
+        autoRetrain: false,
+      );
+
+      when(() => mockRepository.getSettings()).thenAnswer(
+        (_) async => testSettings,
+      );
+      when(() => mockRepository.updateThemeMode(any()))
+          .thenThrow(Exception('disk unavailable'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BlocProvider<SettingsBloc>.value(
+            value: settingsBloc,
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.runAsync(() async {
+        settingsBloc.add(const ToggleTheme(ThemeMode.dark));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not update settings'), findsOneWidget);
+      expect(find.text('Could not load settings'), findsNothing);
+      expect(find.text('API Server'), findsOneWidget);
     });
   });
 }

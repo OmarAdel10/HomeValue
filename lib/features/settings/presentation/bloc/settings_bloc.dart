@@ -16,6 +16,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final bool _ownsHttpClient;
 
   Timer? _autoRetrainTimer;
+  AppSettings? _lastKnownSettings;
+  bool _retrainInFlight = false;
 
   SettingsBloc({
     required this.repository,
@@ -45,10 +47,14 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     try {
       final settings = await repository.getSettings();
+      _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
       _syncTimer(settings.autoRetrain);
+      if (settings.autoRetrain && _isRetrainDue(settings)) {
+        unawaited(_triggerRetrain());
+      }
     } catch (e) {
-      emit(SettingsFailure(e.toString()));
+      emit(SettingsFailure(e.toString(), isLoadFailure: true));
     }
   }
 
@@ -58,6 +64,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     try {
       final settings = await repository.updateServerUrl(event.serverUrl);
+      _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
     } catch (e) {
       emit(SettingsFailure(e.toString()));
@@ -70,6 +77,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     try {
       final settings = await repository.updateThemeMode(event.themeMode);
+      _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
     } catch (e) {
       emit(SettingsFailure(e.toString()));
@@ -81,10 +89,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     final currentState = state;
-    final wasEnabled =
-        currentState is SettingsLoaded && currentState.settings.autoRetrain;
+    final wasEnabled = _lastKnownSettings?.autoRetrain ??
+        (currentState is SettingsLoaded && currentState.settings.autoRetrain);
     try {
       final settings = await repository.updateAutoRetrain(event.autoRetrain);
+      _lastKnownSettings = settings;
       emit(SettingsLoaded(settings));
       if (!settings.autoRetrain) {
         _syncTimer(false);
@@ -95,6 +104,14 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     } catch (e) {
       emit(SettingsFailure(e.toString()));
     }
+  }
+
+  bool _isRetrainDue(AppSettings settings) {
+    final lastRun = settings.lastAutoRetrainAt;
+    if (lastRun == null) {
+      return true;
+    }
+    return DateTime.now().difference(lastRun) >= retrainInterval;
   }
 
   void _syncTimer(bool enabled) {
@@ -111,14 +128,21 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   Future<void> _triggerRetrain() async {
+    if (_retrainInFlight) {
+      return;
+    }
+    _retrainInFlight = true;
+    Uri? uri;
     try {
       final settings = await repository.getSettings();
-      final baseUrl = settings.serverUrl;
-      final uri = Uri.parse('$baseUrl/train');
+      uri = Uri.parse(settings.serverUrl).resolve('/train');
       await _httpClient.post(uri).timeout(const Duration(minutes: 10));
+      await repository.updateLastAutoRetrain(DateTime.now());
     } catch (e) {
-      // Log error but don't crash the app
-      log('Auto-retrain failed: $e');
+      // Log outcome only; never log the URL or raw exception text.
+      log('Auto-retrain failed: ${e.runtimeType} ${uri?.path ?? ''}');
+    } finally {
+      _retrainInFlight = false;
     }
   }
 }

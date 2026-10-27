@@ -27,4 +27,9 @@ class SettingsRepositoryImpl implements SettingsRepository {
   Future<AppSettings> updateAutoRetrain(bool autoRetrain) async {
     return localDataSource.updateAutoRetrain(autoRetrain);
   }
+
+  @override
+  Future<AppSettings> updateLastAutoRetrain(DateTime at) async {
+    return localDataSource.updateLastAutoRetrain(at);
+  }
 }

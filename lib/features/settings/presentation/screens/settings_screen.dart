@@ -15,6 +15,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _urlController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  AppSettings _lastSettings = AppSettings.defaults();
 
   @override
   void initState() {
@@ -33,8 +34,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return BlocListener<SettingsBloc, SettingsState>(
       listener: (context, state) {
         if (state is SettingsLoaded) {
+          _lastSettings = state.settings;
           _urlController.text = state.settings.serverUrl;
-        } else if (state is SettingsFailure) {
+        } else if (state is SettingsFailure && !state.isLoadFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Could not update settings')),
           );
@@ -46,20 +48,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         body: BlocBuilder<SettingsBloc, SettingsState>(
           builder: (context, state) {
-            if (state is SettingsLoaded) {
-              return _buildSettingsForm(context, state.settings);
+            if (state is SettingsFailure && state.isLoadFailure) {
+              return _buildFailure(context);
             }
-            if (state is SettingsFailure) {
-              return _buildFailure(context, state.message);
-            }
-            return const Center(child: CircularProgressIndicator());
+            final settings =
+                state is SettingsLoaded ? state.settings : _lastSettings;
+            return _buildSettingsForm(context, settings);
           },
         ),
       ),
     );
   }
 
-  Widget _buildFailure(BuildContext context, String message) {
+  Widget _buildFailure(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -78,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              message,
+              'Check that the local server is reachable, then try again.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
