@@ -1,7 +1,6 @@
 """Tests for the data loading module."""
 
 import hashlib
-import os
 import stat
 from pathlib import Path
 from types import SimpleNamespace

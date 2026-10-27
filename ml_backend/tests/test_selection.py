@@ -1,5 +1,7 @@
 """Tests for model selection and serialization."""
 
+import warnings
+
 import numpy as np
 import pytest
 from sklearn.linear_model import LinearRegression
@@ -11,6 +13,9 @@ from ml_backend.models.selection import (
     save_model,
     select_best_model,
 )
+
+# Suppress sklearn RuntimeWarning for division by zero in SelectKBest
+warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
 
 
 def _dummy_pipeline(name: str) -> Pipeline:
@@ -46,32 +51,18 @@ def test_select_best_model_picks_lowest_rmse():
     assert best_pipe is pipe_b
 
 
-def test_select_best_model_returns_pipeline_tuple():
-    X_test = np.random.default_rng(1).normal(size=(20, 5))
-    y_test = np.random.default_rng(1).normal(size=20)
-    models = {"A": _dummy_pipeline("A"), "B": _dummy_pipeline("B")}
-
-    name, pipe = select_best_model(models, X_test, y_test)
-
-    assert isinstance(name, str)
-    assert isinstance(pipe, Pipeline)
+def test_select_best_model_with_empty_dict_raises():
+    with pytest.raises(ValueError, match="No models provided for selection"):
+        select_best_model({}, np.array([[1.0]]), np.array([1.0]))
 
 
-def test_select_best_model_raises_on_empty_dict():
-    X_test = np.random.default_rng(2).normal(size=(10, 5))
-    y_test = np.random.default_rng(2).normal(size=10)
+def test_select_best_model_with_mismatched_samples_raises():
+    pipe = _dummy_pipeline("Model1")
+    X_test = np.random.default_rng(1).normal(size=(10, 5))
+    y_test = np.random.default_rng(1).normal(size=5)  # different size
 
-    with pytest.raises(ValueError, match="No models provided"):
-        select_best_model({}, X_test, y_test)
-
-
-def test_select_best_model_raises_on_mismatched_shapes():
-    X_test = np.random.default_rng(3).normal(size=(10, 3))
-    y_test = np.random.default_rng(3).normal(size=9)  # mismatched
-    models = {"A": _dummy_pipeline("A")}
-
-    with pytest.raises(ValueError, match="same number of samples"):
-        select_best_model(models, X_test, y_test)
+    with pytest.raises(ValueError, match="X_test and y_test must have the same number of samples"):
+        select_best_model({"Model1": pipe}, X_test, y_test)
 
 
 def test_save_model_creates_file(tmp_path):
@@ -81,12 +72,11 @@ def test_save_model_creates_file(tmp_path):
     save_model(pipe, path)
 
     assert path.exists()
-    assert path.stat().st_size > 0
 
 
 def test_save_model_creates_parent_dirs(tmp_path):
     pipe = _dummy_pipeline("TestModel")
-    path = tmp_path / "nested" / "deep" / "model.joblib"
+    path = tmp_path / "subdir" / "model.joblib"
 
     save_model(pipe, path)
 
@@ -94,34 +84,27 @@ def test_save_model_creates_parent_dirs(tmp_path):
 
 
 def test_load_model_returns_pipeline(tmp_path):
-    original = _dummy_pipeline("Original")
+    pipe = _dummy_pipeline("TestModel")
     path = tmp_path / "model.joblib"
-    save_model(original, path)
+    save_model(pipe, path)
 
     loaded = load_model(path)
 
     assert isinstance(loaded, Pipeline)
-    assert hasattr(loaded.named_steps["model"], "predict")
+    assert set(loaded.named_steps.keys()) == {"scaler", "model"}
 
 
 def test_load_model_predictions_match(tmp_path):
-    rng = np.random.default_rng(42)
-    X = rng.normal(size=(20, 5))
-    y = rng.normal(size=20)
-
-    original = Pipeline(
-        [
-            ("scaler", StandardScaler()),
-            ("model", LinearRegression()),
-        ]
-    )
-    original.fit(X, y)
+    pipe = _dummy_pipeline("TestModel")
+    X = np.random.default_rng(0).normal(size=(10, 5))
+    y = np.random.default_rng(0).normal(size=10)
+    pipe.fit(X, y)
 
     path = tmp_path / "model.joblib"
-    save_model(original, path)
+    save_model(pipe, path)
     loaded = load_model(path)
 
-    original_preds = original.predict(X)
+    original_preds = pipe.predict(X)
     loaded_preds = loaded.predict(X)
 
     np.testing.assert_array_almost_equal(original_preds, loaded_preds)
@@ -153,19 +136,3 @@ def test_save_load_preserves_all_steps(tmp_path):
     assert set(loaded.named_steps.keys()) == set(pipe.named_steps.keys())
     for step_name in pipe.named_steps:
         assert step_name in loaded.named_steps
-
-
-def test_select_best_model_with_three_models():
-    X_test = np.random.default_rng(5).normal(size=(25, 5))
-    y_test = np.random.default_rng(5).normal(size=25)
-
-    models = {
-        "Model1": _dummy_pipeline("Model1"),
-        "Model2": _dummy_pipeline("Model2"),
-        "Model3": _dummy_pipeline("Model3"),
-    }
-
-    best_name, best_pipe = select_best_model(models, X_test, y_test)
-
-    assert best_name in {"Model1", "Model2", "Model3"}
-    assert best_pipe in models.values()

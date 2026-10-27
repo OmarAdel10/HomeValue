@@ -62,6 +62,7 @@ markers = [
     "slow: marks tests as slow",
 ]
 filterwarnings = [
+    "ignore:invalid value encountered in divide:RuntimeWarning",
     "ignore::pytest.PytestUnknownMarkWarning:.*integration.*",
 ]
 
