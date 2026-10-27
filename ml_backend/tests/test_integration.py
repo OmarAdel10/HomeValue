@@ -31,6 +31,7 @@ from ml_backend.preprocessing import (
 from ml_backend.server import app
 
 
+@pytest.mark.integration
 class TestFullPipeline:
     """Test the complete ML pipeline from data to prediction."""
 
@@ -239,6 +240,7 @@ class TestModelPersistence:
         np.testing.assert_array_almost_equal(original_preds, loaded_preds)
 
 
+@pytest.mark.integration
 class TestAPIValidation:
     """Test API input validation."""
 
