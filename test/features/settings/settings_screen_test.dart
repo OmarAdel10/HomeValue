@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:home_value/features/settings/presentation/screens/settings_screen.dart';
 import 'package:home_value/features/settings/presentation/bloc/settings_bloc.dart';
+import 'package:home_value/features/settings/presentation/bloc/settings_event.dart';
 import 'package:home_value/features/settings/domain/entities/app_settings.dart';
 import 'package:home_value/features/settings/domain/repositories/settings_repository.dart';
 
@@ -22,14 +25,22 @@ void main() {
   group('SettingsScreen', () {
     late MockSettingsRepository mockRepository;
     late SettingsBloc settingsBloc;
+    late http.Client mockClient;
 
     setUp(() {
       mockRepository = MockSettingsRepository();
-      settingsBloc = SettingsBloc(repository: mockRepository);
+      mockClient = MockClient(
+        (_) async => http.Response('{"status": "ok"}', 200),
+      );
+      settingsBloc = SettingsBloc(
+        repository: mockRepository,
+        httpClient: mockClient,
+      );
     });
 
     tearDown(() {
       settingsBloc.close();
+      mockClient.close();
     });
 
     testWidgets('shows settings form when loaded', (WidgetTester tester) async {
@@ -254,6 +265,55 @@ void main() {
       expect(find.text('HomeValue'), findsOneWidget);
       expect(find.text('Version 1.0.0'), findsOneWidget);
       expect(find.text('Data: California Housing Dataset'), findsOneWidget);
+    });
+
+    testWidgets('shows an error with retry when loading settings fails',
+        (WidgetTester tester) async {
+      const testSettings = AppSettings(
+        serverUrl: 'http://localhost:8000',
+        themeMode: ThemeMode.system,
+        autoRetrain: false,
+      );
+
+      when(() => mockRepository.getSettings()).thenAnswer(
+        (_) async => testSettings,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BlocProvider<SettingsBloc>.value(
+            value: settingsBloc,
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('API Server'), findsOneWidget);
+
+      when(() => mockRepository.getSettings())
+          .thenThrow(Exception('disk unavailable'));
+      await tester.runAsync(() async {
+        settingsBloc.add(const LoadSettings());
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not load settings'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.textContaining('disk unavailable'), findsOneWidget);
+      expect(find.text('Could not update settings'), findsOneWidget);
+
+      when(() => mockRepository.getSettings()).thenAnswer(
+        (_) async => testSettings,
+      );
+
+      await tester.tap(find.text('Retry'));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Server URL'), findsOneWidget);
     });
   });
 }

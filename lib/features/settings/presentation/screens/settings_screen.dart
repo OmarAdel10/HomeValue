@@ -34,6 +34,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       listener: (context, state) {
         if (state is SettingsLoaded) {
           _urlController.text = state.settings.serverUrl;
+        } else if (state is SettingsFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update settings')),
+          );
         }
       },
       child: Scaffold(
@@ -45,8 +49,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (state is SettingsLoaded) {
               return _buildSettingsForm(context, state.settings);
             }
+            if (state is SettingsFailure) {
+              return _buildFailure(context, state.message);
+            }
             return const Center(child: CircularProgressIndicator());
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFailure(BuildContext context, String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Could not load settings',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () =>
+                  context.read<SettingsBloc>().add(const LoadSettings()),
+              child: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );
