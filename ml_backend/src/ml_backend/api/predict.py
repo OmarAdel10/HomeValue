@@ -1,7 +1,5 @@
 """FastAPI router for prediction endpoints."""
 
-from typing import Any
-
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -55,11 +53,34 @@ class PredictionRequest(BaseModel):
         return v
 
 
+class BatchSample(BaseModel):
+    """Single feature set for batch prediction."""
+
+    MedInc: float = Field(..., description="Median income in block group")
+    HouseAge: float = Field(..., description="Median house age in block group")
+    AveRooms: float = Field(..., description="Average number of rooms per household")
+    AveBedrms: float = Field(..., description="Average number of bedrooms per household")
+    Population: float = Field(..., description="Block group population")
+    AveOccup: float = Field(..., description="Average household occupancy")
+    Latitude: float = Field(..., description="Block group latitude")
+    Longitude: float = Field(..., description="Block group longitude")
+    ocean_proximity: str = Field(default="", description="Ocean proximity category")
+
+    @field_validator("ocean_proximity")
+    @classmethod
+    def validate_ocean_proximity(cls, v: str) -> str:
+        if not v:
+            return v  # Allow empty/default (not used by model)
+        if v not in OCEAN_PROXIMITY_VALUES:
+            raise ValueError(f"ocean_proximity must be one of {OCEAN_PROXIMITY_VALUES}")
+        return v
+
+
 class BatchPredictionRequest(BaseModel):
     """Batch prediction request with multiple feature sets."""
 
-    features: list[dict[str, Any]] = Field(
-        ..., description="List of feature dictionaries", min_length=1
+    features: list[BatchSample] = Field(
+        ..., description="List of feature dictionaries", min_length=1, max_length=1000
     )
 
 
@@ -142,7 +163,7 @@ async def predict_batch(request: BatchPredictionRequest) -> BatchPredictionRespo
         features_frame = pd.DataFrame(
             [
                 {feature: sample[feature] for feature in MODEL_FEATURES}
-                for sample in request.features
+                for sample in (s.model_dump() for s in request.features)
             ]
         )
 

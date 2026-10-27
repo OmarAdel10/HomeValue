@@ -50,7 +50,7 @@ graph TD
 
     subgraph "FastAPI Endpoints"
     F1[POST /predict]
-    F2[POST /predict_batch]
+    F2[POST /predict/batch]
     F3[GET /health]
     F4[GET /model/info]
     F5[GET /model/comparison]
@@ -74,8 +74,8 @@ graph TD
 - **Ensemble Models**: RandomForest, ExtraTrees, Voting, Stacking Regressors
 - **Tuned Models**: RandomForest (RandomizedSearchCV), GradientBoosting (RandomizedSearchCV)
 - **Model Selection**: RMSE-based best model selection, joblib serialization
-- **FastAPI Endpoints**: `/predict`, `/predict_batch`, `/health`, `/model/info`, `/model/comparison`, `/train`
-- **Tests**: 234 tests, 95.61% coverage
+- **FastAPI Endpoints**: `/predict`, `/predict/batch`, `/health`, `/model/info`, `/model/comparison`, `/train`
+- **Tests**: 250 tests, 96.7% coverage
 
 ### Flutter Desktop App (Linux)
 - **Architecture**: MVVM + BLoC with GetIt dependency injection
@@ -134,7 +134,7 @@ flutter test
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/predict` | Single house price prediction |
-| POST | `/predict_batch` | Batch predictions |
+| POST | `/predict/batch` | Batch predictions |
 | GET | `/health` | Health check |
 | GET | `/model/info` | Model metadata |
 | GET | `/model/comparison` | Model comparison metrics |
@@ -170,7 +170,7 @@ curl -X POST http://localhost:8000/predict \
 
 **Batch Prediction:**
 ```bash
-curl -X POST http://localhost:8000/predict_batch \
+curl -X POST http://localhost:8000/predict/batch \
   -H "Content-Type: application/json" \
   -d '{
     "features": [

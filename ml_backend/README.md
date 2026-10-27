@@ -25,5 +25,10 @@ make train    # run full training pipeline, saves best model
 make serve    # start FastAPI server on localhost:8000
 ```
 
+Pytest configuration lives in the repository-root `pytest.ini`, so `pytest` can be
+invoked from the repository root or from `ml_backend/`. Run coverage from
+`ml_backend/` (`make test`) so the coverage settings and 95% gate in
+`pyproject.toml` apply.
+
 `make train` and `make serve` intentionally exit with a roadmap message until the
 training pipeline and API land.

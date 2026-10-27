@@ -1,7 +1,6 @@
 """Tests for the data loading module."""
 
 import hashlib
-import os
 import stat
 from pathlib import Path
 from types import SimpleNamespace
@@ -457,9 +456,6 @@ def test_split_target_rejects_non_numeric_target():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    os.getenv("RUN_INTEGRATION") != "1", reason="set RUN_INTEGRATION=1 to hit the network"
-)
 def test_load_california_housing_real_dataset(cache_dir):
     X, y = loader.load_california_housing()
     assert X.shape[0] == y.shape[0] > 0

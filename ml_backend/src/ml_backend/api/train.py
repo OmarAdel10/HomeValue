@@ -1,5 +1,6 @@
 """FastAPI router for training endpoint."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,51 @@ from ml_backend.preprocessing import (
 )
 
 router = APIRouter(prefix="/train", tags=["training"])
+
+
+def _save_comparison(
+    config: Config, all_models: dict[str, Any], X_test_enc: Any, y_test_np: Any
+) -> list[dict]:
+    """Evaluate all models and save comparison data."""
+    from ml_backend.models.evaluation import evaluate_model
+
+    comparison = []
+    for name, pipeline in all_models.items():
+        metrics = evaluate_model(pipeline, X_test_enc, y_test_np)
+        cv_results = cross_validate_model(pipeline, X_test_enc, y_test_np, cv=config.cv_folds)
+        is_best = False  # Will be updated after best model selection
+        comparison.append(
+            {
+                "model_name": name,
+                "model": name,
+                "rmse": metrics["rmse"],
+                "mae": metrics["mae"],
+                "r2": metrics["r2"],
+                "cv_rmse": cv_results["cv_rmse_mean"],
+                "cv_rmse_std": cv_results["cv_rmse_std"],
+                "cv_std": cv_results["cv_rmse_std"],
+                "is_best": is_best,
+            }
+        )
+
+    config.ensure_dirs()
+    comparison_path = config.models_dir / "model_comparison.json"
+    with open(comparison_path, "w") as f:
+        json.dump(comparison, f, indent=2)
+
+    return comparison
+
+
+def _update_best_in_comparison(config: Config, best_name: str) -> None:
+    """Mark the best model in the saved comparison."""
+    comparison_path = config.models_dir / "model_comparison.json"
+    if comparison_path.exists():
+        with open(comparison_path) as f:
+            comparison = json.load(f)
+        for m in comparison:
+            m["is_best"] = m["model_name"] == best_name
+        with open(comparison_path, "w") as f:
+            json.dump(comparison, f, indent=2)
 
 
 def save_training_artifact(
@@ -132,8 +178,14 @@ def run_full_training_pipeline(config: Config | None = None) -> dict:
     # 10. Cross-validation on best model
     cv_results = cross_validate_model(best_pipeline, X_train_enc, y_train_np, cv=config.cv_folds)
 
+    # 11. Save comparison data for /model/comparison endpoint
+    _save_comparison(config, all_models, X_test_enc, y_test_np)
+
     # 11. Save preprocessing + best estimator so /predict can accept raw features
     full_pipeline = save_training_artifact(preprocessor, best_pipeline, config)
+
+    # 12. Update best model flag in comparison
+    _update_best_in_comparison(config, best_name)
 
     return {
         "artifact": str(full_pipeline),

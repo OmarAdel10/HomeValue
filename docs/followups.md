@@ -53,3 +53,35 @@ Plane project `HOME` (HomeValue).
   naming the column. Add a pandas `infer_dtype` guard before Ames CSV ingestion.
 - `_to_object_with_nan` is referenced by `FunctionTransformer`; promote it to a public
   symbol before model artifacts pickle the preprocessing pipeline (HOME-7/HOME-12).
+
+## Pytest warning cleanup (2026-10-27)
+
+- **HOME-35** — `ml_backend/tests/conftest.py:24-25` and
+  `ml_backend/tests/test_selection.py:18` call `warnings.filterwarnings` at import
+  time, suppressing `invalid value encountered in divide` for the whole pytest
+  process. Collapse to the scoped autouse fixture at `conftest.py:14-21`.
+- **HOME-36** — `.gitignore` ignores `/coverage/` but not `.coverage`; a root-level
+  `pytest --cov` run leaves an untracked artifact. Add `.coverage` and `.coverage.*`.
+- Pytest config now lives only in the repo root `pytest.ini`. Adding another inifile
+  under `ml_backend/` would split `rootdir` discovery again and reintroduce unknown
+  marker warnings.
+- **HOME-37** — `ml_backend/tests/test_integration.py::TestFullPipeline` loads the
+  California housing dataset over the network but carries no `integration` marker, so
+  CI always fetches and deserializes a remote artifact. Add markers plus a dedicated
+  CI job once measured: total coverage is 96.67% with these tests included and stays
+  96.67% when they are excluded, so the cost is runtime (roughly 75% of the suite)
+  rather than uncovered lines.
+
+## Coverage remediation review (2026-10-27)
+
+- **HOME-39** — `lib/features/settings/presentation/bloc/settings_bloc.dart:84-92`
+  invoked `_maybeStartAutoRetrain` from every settings handler, so changing theme or
+  the server URL issued `POST /train` and reset the 24h timer. Also unhandled:
+  `SettingsFailure` is never rendered in `settings_screen.dart:35,45`.
+- **HOME-40** — `ml_backend/src/ml_backend/api/models.py:24-30` exposes a dead
+  `_save_comparison` duplicate, and `tests/test_models_api.py:51-63` asserts metrics
+  only behind `if data["models"]`, so the populated `/model/comparison` path
+  (`models.py:18-20`) is never exercised.
+- **HOME-41** — `ml_backend/src/ml_backend/api/predict.py:69-84` batch validation is
+  untested: defaulted `ocean_proximity`, rejected invalid category, and the 1000
+  sample cap have no cases in `tests/test_predict_api.py`.

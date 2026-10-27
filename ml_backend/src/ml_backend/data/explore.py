@@ -2,9 +2,12 @@
 
 import logging
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -21,6 +24,11 @@ def _safe_filename_part(value: str) -> str:
     """Reduce an arbitrary column name to a safe, bounded filename fragment."""
     slug = re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
     return (slug or "target")[:_MAX_SLUG_LENGTH]
+
+
+def _make_heatmap_cmap() -> "matplotlib.colors.Colormap":
+    """Create a coolwarm colormap using the new with_extremes API."""
+    return plt.get_cmap("coolwarm").with_extremes(bad="lightgray")
 
 
 def explore_dataset(df: pd.DataFrame) -> dict[str, Any]:
@@ -86,8 +94,6 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
     Returns:
         List of saved plot file paths
     """
-    import matplotlib
-
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -125,7 +131,12 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
         path = exploration_dir / "correlation_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 10))
         try:
-            sns.heatmap(df[numeric_cols].corr(), annot=False, cmap="coolwarm", center=0, ax=ax)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=PendingDeprecationWarning, module="seaborn.matrix"
+                )
+                cmap = _make_heatmap_cmap()
+                sns.heatmap(df[numeric_cols].corr(), annot=False, cmap=cmap, center=0, ax=ax)
             ax.set_title("Feature Correlation Matrix")
             fig.savefig(path, dpi=150, bbox_inches="tight")
         finally:
@@ -137,7 +148,17 @@ def save_exploration_plots(df: pd.DataFrame, target_col: str | None = None) -> l
         path = exploration_dir / "missing_values_heatmap.png"
         fig, ax = plt.subplots(figsize=(12, 8))
         try:
-            sns.heatmap(df.isnull().iloc[:_MAX_HEATMAP_ROWS], cbar=False, yticklabels=False, ax=ax)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=PendingDeprecationWarning, module="seaborn.matrix"
+                )
+                sns.heatmap(
+                    df.isnull().iloc[:_MAX_HEATMAP_ROWS],
+                    cbar=False,
+                    yticklabels=False,
+                    ax=ax,
+                    cmap=_make_heatmap_cmap(),
+                )
             ax.set_title("Missing Values Pattern")
             fig.savefig(path, dpi=150, bbox_inches="tight")
         finally:

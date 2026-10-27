@@ -27,6 +27,15 @@ class PredictionSuccess extends PredictionState {
   List<Object?> get props => [result];
 }
 
+class BatchPredictionSuccess extends PredictionState {
+  final List<PredictionResult> results;
+
+  const BatchPredictionSuccess(this.results);
+
+  @override
+  List<Object?> get props => [results];
+}
+
 class PredictionFailure extends PredictionState {
   final String message;
 

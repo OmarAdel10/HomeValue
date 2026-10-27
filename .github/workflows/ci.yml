@@ -44,6 +44,19 @@ jobs:
         run: |
           mypy src
 
+      - name: Verify pytest config from repository root
+        working-directory: .
+        run: |
+          test -f pytest.ini
+          test ! -e ml_backend/pytest.ini
+          test ! -e ml_backend/setup.cfg
+          test ! -e ml_backend/tox.ini
+          ! grep -q '\[tool.pytest.ini_options\]' ml_backend/pyproject.toml
+          out=$(python -m pytest --collect-only --strict-markers)
+          grep -qx 'configfile: pytest.ini' <<<"$out"
+          grep -qx "rootdir: $PWD" <<<"$out"
+          grep -Eq '[0-9]+ tests collected' <<<"$out"
+
       - name: Run tests with coverage
         run: |
           pytest --cov=ml_backend --cov-report=xml --cov-fail-under=95

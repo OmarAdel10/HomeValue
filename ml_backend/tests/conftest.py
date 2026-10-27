@@ -1,5 +1,7 @@
 """Pytest configuration and shared fixtures."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -7,6 +9,20 @@ from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 
 from ml_backend.preprocessing import build_preprocessing_pipeline
+
+
+@pytest.fixture(autouse=True)
+def suppress_sklearn_warnings():
+    """Suppress sklearn RuntimeWarning for division by zero in SelectKBest."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
+        yield
+
+
+# Suppress sklearn RuntimeWarning for division by zero in SelectKBest
+warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
 
 
 @pytest.fixture
