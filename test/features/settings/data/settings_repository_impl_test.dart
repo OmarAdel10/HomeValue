@@ -44,4 +44,14 @@ void main() {
 
     expect(repository.getSettings(), throwsException);
   });
+
+  test('serverUrlBlocked delegates to datasource', () async {
+    when(() => dataSource.serverUrlBlocked).thenReturn(true);
+    expect(repository.serverUrlBlocked, isTrue);
+    verify(() => dataSource.serverUrlBlocked).called(1);
+
+    when(() => dataSource.serverUrlBlocked).thenReturn(false);
+    expect(repository.serverUrlBlocked, isFalse);
+    verify(() => dataSource.serverUrlBlocked).called(1);
+  });
 }

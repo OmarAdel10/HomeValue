@@ -265,4 +265,35 @@ void main() {
       returnsNormally,
     );
   });
+
+  // --- serverUrlBlocked tests ---
+
+  test('serverUrlBlocked returns false for allowed URL', () async {
+    await dataSource.updateServerUrl('http://example.com:8000/train');
+    expect(dataSource.serverUrlBlocked, isFalse);
+  });
+
+  test('serverUrlBlocked returns true for blocked URL', () async {
+    await expectLater(
+      dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+    // updateServerUrl rejects before persisting, so stored URL is still default.
+    // Directly persist a blocked URL via setMockInitialValues for a fresh instance.
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'server_url': 'http://127.0.0.1:8000/',
+    });
+    prefs = await SharedPreferences.getInstance();
+    dataSource = SettingsLocalDataSource(prefs);
+    expect(dataSource.serverUrlBlocked, isTrue);
+  });
+
+  test('serverUrlBlocked returns true for default blocked URL', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'server_url': 'http://169.254.169.254/',
+    });
+    prefs = await SharedPreferences.getInstance();
+    dataSource = SettingsLocalDataSource(prefs);
+    expect(dataSource.serverUrlBlocked, isTrue);
+  });
 }

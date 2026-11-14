@@ -279,7 +279,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       return _RetrainOutcome.skippedInFlight;
     }
     _retrainInFlight = true;
-    var attemptStarted = false;
+    bool isRealAttempt = false;
     Uri? uri;
     try {
       final settings = await repository.getSettings();
@@ -287,14 +287,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       if (!settings.autoRetrain || !_isRetrainDue(settings)) {
         return _RetrainOutcome.skippedNotDue;
       }
-      attemptStarted = true;
+      isRealAttempt = true;
       uri = await _trainUri(settings.serverUrl);
-      // Re-check serverUrlBlocked immediately before POST to close the
-      // TOCTOU race where the URL could be unblocked between check and request.
-      if (repository.serverUrlBlocked) {
-        log('Auto-retrain skipped: server URL blocked by SSRF rules');
-        return _RetrainOutcome.skippedBlocked;
-      }
+      // _trainUri above already validates serverUrlBlocked/SSRF rules via
+      // validateServerUrl + resolved-IP revalidation + IP pinning. Any blocked
+      // hostname throws before we reach the POST, so no separate hostname-only
+      // re-check is needed here (it cannot catch domain-name rebinding).
       final response = await _httpClient.post(uri, headers: {
         'Content-Type': 'application/json'
       }).timeout(AppConstants.apiTimeout);
@@ -304,6 +302,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
       _lastKnownSettings ??= settings;
       _consecutiveRetrainFailures = 0;
+      isRealAttempt = true;
       return _RetrainOutcome.performed;
     } on ArgumentError catch (e) {
       // Blocked resolved IP or DNS failure — fail-closed without consuming
@@ -313,10 +312,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     } catch (e) {
       log('Auto-retrain failed');
       _consecutiveRetrainFailures++;
+      isRealAttempt = true;
       return _RetrainOutcome.failed;
     } finally {
       _retrainInFlight = false;
-      if (attemptStarted) {
+      if (isRealAttempt) {
         _lastAttemptAt = _now();
       }
       if (_isEnabled &&

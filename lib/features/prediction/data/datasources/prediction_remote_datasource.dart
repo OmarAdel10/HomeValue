@@ -38,7 +38,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
       if (!isAllowedHost(resolved.address)) {
         throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      return resolved.address;
+      return resolved.address.split('%').first;
     }
     final addresses = await InternetAddress.lookup(host);
     if (addresses.isEmpty) {
@@ -49,7 +49,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
       if (!isAllowedHost(address.address)) {
         throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      firstValidated ??= address.address;
+      firstValidated ??= address.address.split('%').first;
     }
     return firstValidated!;
   }

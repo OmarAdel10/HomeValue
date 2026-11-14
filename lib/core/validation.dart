@@ -35,6 +35,11 @@ final List<(String, int)> blockedIpv4Cidrs = <(String, int)>[
 /// apply only to literal IP addresses. DNS-rebinding protection is handled
 /// separately via resolved-IP revalidation.
 bool isAllowedHost(String host) {
+  // Reject empty host.
+  if (host.isEmpty) return false;
+  // Reject hosts containing whitespace or control characters.
+  if (host.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) return false;
+
   final lower = host.toLowerCase();
   // Strip IPv6 zone ID (e.g., fe80::1%eth0 -> fe80::1) to prevent bypass.
   final noZone = lower.split('%').first;
@@ -51,9 +56,15 @@ bool isAllowedHost(String host) {
   final address = InternetAddress.tryParse(stripped);
   if (address == null) {
     // Not a valid IP. If it looks like a malformed IPv4 (4 dot-separated
-    // parts), block it. Otherwise treat as a domain name and allow it.
+    // parts), block it. Block alternative IPv4 notations (bare integer like
+    // 2130706433, or hex like 0x7f000001) that bypass strict dotted-decimal
+    // parsing. Otherwise treat as a domain name and allow it.
     if (stripped.split('.').length == 4) {
       return false; // Malformed IPv4: blocked
+    }
+    if (RegExp(r'^\d+$').hasMatch(stripped) ||
+        RegExp(r'^0x[0-9a-fA-F]+$').hasMatch(stripped)) {
+      return false; // Alternative IPv4 notation: blocked
     }
     return true; // Domain name: allowed
   }
@@ -102,14 +113,17 @@ bool isAllowedHost(String host) {
     if (bytes.length == 16) {
       final is6to4 = bytes[0] == 0x20 && bytes[1] == 0x02;
       final isRfc6052 =
-          bytes[0] == 0x64 && bytes[1] == 0xff && bytes[2] == 0x9b;
+          bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b;
       if (is6to4 || isRfc6052) {
-        final embeddedHigh =
-            '${bytes[8]}.${bytes[9]}.${bytes[10]}.${bytes[11]}';
-        final embeddedLow =
-            '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
-        if (_ipv4InBlockedRange(embeddedHigh) ||
-            _ipv4InBlockedRange(embeddedLow)) {
+        String embedded;
+        if (is6to4) {
+          // 6to4: 2002:IPv4::/48, embedded IPv4 in bytes 2-5.
+          embedded = '${bytes[2]}.${bytes[3]}.${bytes[4]}.${bytes[5]}';
+        } else {
+          // RFC 6052: 64:ff9b::/96, embedded IPv4 in bytes 12-15.
+          embedded = '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
+        }
+        if (_ipv4InBlockedRange(embedded)) {
           return false;
         }
       }
@@ -167,6 +181,11 @@ bool _ipv4InBlockedRange(String ip) {
 /// Validates [serverUrl] before it is persisted: scheme must be http/https
 /// and host must not be private/link-local/metadata. Throws on invalid input.
 void validateServerUrl(String serverUrl) {
+  // Reject raw input containing whitespace or control characters before
+  // parsing, since Uri.tryParse may normalize or drop them.
+  if (serverUrl.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {
+    throw ArgumentError('Invalid server URL');
+  }
   final uri = Uri.tryParse(serverUrl.trim());
   if (uri == null || !uri.hasAuthority) {
     throw ArgumentError('Invalid server URL');
@@ -197,6 +216,14 @@ void validateServerUrl(String serverUrl) {
 void assertAllowedHost(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null || !uri.hasAuthority) {
+    throw ArgumentError('Invalid URL');
+  }
+  // Reject empty host (e.g. http://:8000/path).
+  if (uri.host.isEmpty) {
+    throw ArgumentError('Invalid URL');
+  }
+  // Reject hosts containing whitespace or control characters.
+  if (uri.host.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {
     throw ArgumentError('Invalid URL');
   }
   // Reject embedded credentials (userInfo) to prevent SSRF via user@host.
