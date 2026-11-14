@@ -13,6 +13,15 @@ import '../../domain/repositories/settings_repository.dart';
 import 'settings_event.dart';
 import 'settings_state.dart';
 
+/// Outcome of a retrain attempt: distinguishes actual attempts from skips
+/// so in-flight/closed skips are not reported as failures.
+enum _RetrainOutcome {
+  performed, // retrain attempt succeeded
+  failed, // retrain attempt was made but failed
+  skippedClosed, // bloc is closed, no attempt
+  skippedInFlight, // already in flight or not due, no attempt
+}
+
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository repository;
   final Duration retrainInterval;
@@ -63,6 +72,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   /// fail-closed resolved-IP revalidation in _trainUri; redirect responses
   /// are rejected by _triggerRetrain (3xx status codes are not followed).
   static http.Client _createClient() {
+    // Redirect prevention relies on validateServerUrl allowlisting +
+    // fail-closed resolved-IP revalidation in _trainUri; 3xx responses
+    // are rejected by _triggerRetrain (status >= 300 throws).
     return IOClient(HttpClient());
   }
 
@@ -123,8 +135,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         _autoRetrainTimer?.cancel();
         _autoRetrainTimer = null;
       } else if (!wasEnabled) {
-        final retrained = await _triggerRetrain();
-        if (!retrained) {
+        final outcome = await _triggerRetrain();
+        if (outcome == _RetrainOutcome.failed) {
           emit(
               _failure(Exception('Auto-retrain failed'), isLoadFailure: false));
         }
@@ -227,8 +239,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   Future<void> _handleTimerFired() async {
-    final retrained = await _triggerRetrain();
-    if (!retrained && !isClosed) {
+    final outcome = await _triggerRetrain();
+    if (outcome == _RetrainOutcome.failed && !isClosed) {
       // ignore: invalid_use_of_visible_for_testing_member
       emit(_failure(Exception('Scheduled auto-retrain failed')));
     }
@@ -244,7 +256,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     // time. Any DNS resolution failure or timeout fails closed.
     try {
       final resolved = await _dnsLookup(uri.host).timeout(
-        const Duration(milliseconds: 10),
+        const Duration(seconds: 10),
         onTimeout: () => throw ArgumentError('DNS lookup timed out'),
       );
       if (resolved.isEmpty) {
@@ -255,21 +267,21 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
           throw ArgumentError('Resolved host is blocked');
         }
       }
-      // Resolved IPs have been re-validated above to prevent DNS rebinding
-      // TOCTOU; the URI retains its hostname (already allowlisted).
-      return uri;
+      // Connect directly to the first validated IP so the HTTP client does not
+      // re-resolve the hostname at connect time (DNS rebinding TOCTOU).
+      return uri.replace(host: resolved.first.address);
     } on ArgumentError {
       // A resolved IP is blocked or DNS failed — fail closed, do not proceed.
       rethrow;
     }
   }
 
-  Future<bool> _triggerRetrain() async {
+  Future<_RetrainOutcome> _triggerRetrain() async {
     if (isClosed) {
-      return true;
+      return _RetrainOutcome.skippedClosed;
     }
     if (_retrainInFlight) {
-      return true;
+      return _RetrainOutcome.skippedInFlight;
     }
     _retrainInFlight = true;
     var attemptStarted = false;
@@ -278,7 +290,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
       if (!settings.autoRetrain || !_isRetrainDue(settings)) {
-        return true;
+        return _RetrainOutcome.skippedInFlight;
       }
       attemptStarted = true;
       uri = await _trainUri(settings.serverUrl);
@@ -291,12 +303,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
       _lastKnownSettings ??= settings;
       _consecutiveRetrainFailures = 0;
-      return true;
+      return _RetrainOutcome.performed;
     } catch (e) {
       // Log outcome only; never log the URL or raw exception text.
       log('Auto-retrain failed');
       _consecutiveRetrainFailures++;
-      return false;
+      return _RetrainOutcome.failed;
     } finally {
       _retrainInFlight = false;
       if (attemptStarted) {

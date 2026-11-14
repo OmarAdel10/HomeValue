@@ -1,7 +1,10 @@
-import '../../../../core/constants.dart';
-import '../../../settings/data/datasources/settings_local_datasource.dart';
-import '../models/model_comparison_model.dart';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
+
+import '../../../../core/constants.dart';
+import '../../../../core/validation.dart';
+import '../models/model_comparison_model.dart';
 
 class ComparisonRemoteDataSource {
   final http.Client client;
@@ -23,8 +26,19 @@ class ComparisonRemoteDataSource {
     if (uri == null || !uri.hasAuthority) {
       throw ArgumentError('Invalid base URL');
     }
-    if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+    if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host: SSRF protection');
+    }
+    _resolveAndValidateHost(uri.host);
+  }
+
+  void _resolveAndValidateHost(String host) {
+    final resolved = InternetAddress.tryParse(host);
+    if (resolved == null) {
+      return;
+    }
+    if (!isAllowedHost(resolved.address)) {
+      throw ArgumentError('Resolved host is blocked: SSRF protection');
     }
   }
 

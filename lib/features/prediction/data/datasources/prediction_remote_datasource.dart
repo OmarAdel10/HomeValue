@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../../../../core/constants.dart';
-import '../../../settings/data/datasources/settings_local_datasource.dart';
+import '../../../../core/validation.dart';
 import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
@@ -31,8 +32,21 @@ class PredictionRemoteDataSource implements PredictionRepository {
     if (uri == null || !uri.hasAuthority) {
       throw ArgumentError('Invalid base URL');
     }
-    if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+    if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host: SSRF protection');
+    }
+    _resolveAndValidateHost(uri.host);
+  }
+
+  void _resolveAndValidateHost(String host) {
+    final resolved = InternetAddress.tryParse(host);
+    if (resolved == null) {
+      return; // Domain name: allowlisted by validateServerUrl; DNS rebinding
+      // protection is at the HTTP client / network layer outside this
+      // datasource's scope for non-literal hosts.
+    }
+    if (!isAllowedHost(resolved.address)) {
+      throw ArgumentError('Resolved host is blocked: SSRF protection');
     }
   }
 

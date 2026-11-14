@@ -15,7 +15,7 @@ class MockSettingsRepository extends Mock implements SettingsRepository {}
 void main() {
   setUpAll(() {
     registerFallbackValue(const AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
     ));

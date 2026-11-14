@@ -264,7 +264,7 @@ void main() {
         expect(recorder.requests.single.method, 'POST');
         expect(
           recorder.requests.single.url.toString(),
-          'http://example.com:8000/train',
+          'http://8.8.8.8:8000/train',
         );
       },
     );
@@ -705,7 +705,7 @@ void main() {
 
         expect(
           recorder.requests.single.url.toString(),
-          'http://example.com:8000/api/train',
+          'http://8.8.8.8:8000/api/train',
         );
 
         bloc.close();
