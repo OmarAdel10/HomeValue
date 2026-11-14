@@ -1,9 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:home_value/core/validation.dart';
 
 void main() {
+  setUp(() {
+    dnsLookup = (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
+  });
+
+  tearDown(() {
+    dnsLookup = InternetAddress.lookup;
+  });
   group('isAllowedHost', () {
     test('allows public domain', () {
       expect(isAllowedHost('example.com'), isTrue);
@@ -249,6 +258,50 @@ void main() {
     test('blocks 6to4 embedding private IPv4', () {
       expect(
         () async => validateServerUrl('http://[2002:ac10::1]:8000/train'),
+        throwsA(isArgumentError),
+      );
+    });
+  });
+
+  group('validateServerUrl DNS resolve+revalidate', () {
+    test('allows domain resolving to public IP', () {
+      dnsLookup = (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
+      expect(
+        () async => validateServerUrl('http://example.com/train'),
+        returnsNormally,
+      );
+    });
+
+    test('blocks domain resolving to blocked IP', () {
+      dnsLookup =
+          (host) async => <InternetAddress>[InternetAddress('127.0.0.1')];
+      expect(
+        () async => validateServerUrl('http://evil.example.com/train'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('blocks domain resolving to link-local metadata IP', () {
+      dnsLookup =
+          (host) async => <InternetAddress>[InternetAddress('169.254.169.254')];
+      expect(
+        () async => validateServerUrl('http://metadata.google.internal/train'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('fail-closed when DNS lookup throws', () {
+      dnsLookup = (host) async => throw ArgumentError('DNS failure');
+      expect(
+        () async => validateServerUrl('http://example.com/train'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('fail-closed when DNS returns no addresses', () {
+      dnsLookup = (host) async => <InternetAddress>[];
+      expect(
+        () async => validateServerUrl('http://example.com/train'),
         throwsA(isArgumentError),
       );
     });

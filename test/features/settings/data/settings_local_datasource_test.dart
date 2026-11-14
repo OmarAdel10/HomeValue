@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:home_value/features/settings/data/datasources/settings_local_datasource.dart';
+import 'package:home_value/core/validation.dart' as validation;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +16,13 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     prefs = await SharedPreferences.getInstance();
     dataSource = SettingsLocalDataSource(prefs);
+    // Stub DNS so validateServerUrl domain tests pass offline.
+    validation.dnsLookup =
+        (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
+  });
+
+  tearDown(() {
+    validation.dnsLookup = InternetAddress.lookup;
   });
 
   test('returns defaults when nothing is stored', () async {

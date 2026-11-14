@@ -1022,5 +1022,202 @@ void main() {
         async.flushMicrotasks();
       });
     });
+
+    // --- GAP 3: serverUrlBlocked gate / skippedBlocked clock ---
+
+    test('serverUrlBlocked=true blocks retrain and does not consume clock', () {
+      fakeAsync((async) {
+        when(() => mockRepository.serverUrlBlocked).thenReturn(true);
+        final lastRun = current.subtract(const Duration(hours: 25));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: lastRun),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        // Blocked URL must never trigger retrain.
+        expect(recorder.requests, isEmpty);
+        // Clock not consumed: no updateLastAutoRetrain call.
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('serverUrlBlocked=true on ToggleAutoRetrain emits SettingsFailure',
+        () {
+      fakeAsync((async) {
+        when(() => mockRepository.serverUrlBlocked).thenReturn(true);
+        when(() => mockRepository.updateAutoRetrain(true)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: true),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const ToggleAutoRetrain(true));
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        expect(recorder.requests, isEmpty);
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('DNS failure triggers skippedBlocked with no retrain', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        // dnsLookup throws -> _trainUri fail-closed -> skippedBlocked.
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async => throw ArgumentError('DNS failure'),
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        expect(failingRequests, isEmpty);
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('blocked resolved IP triggers skippedBlocked with no retrain', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        // dnsLookup returns metadata IP -> _trainUri fail-closed -> skippedBlocked.
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('169.254.169.254')],
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        expect(failingRequests, isEmpty);
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('stops rescheduling after consecutive failure cap (5)', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(1));
+
+        // Trigger 4 more retries (total 5 = cap).
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(5));
+
+        // After cap reached, no more retries.
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(5));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('skippedClosed outcome when bloc is closed', () async {
+      final bloc = SettingsBloc(
+        repository: mockRepository,
+        httpClient: recorder.client,
+        dnsLookup: (host) async =>
+            <InternetAddress>[InternetAddress('8.8.8.8')],
+      );
+      await bloc.close();
+
+      // Bloc is closed: isClosed is true, _triggerRetrain returns skippedClosed
+      // without attempting any retrain. Adding events after close is not allowed,
+      // so we verify close() completed cleanly and no retrain requests exist.
+      expect(recorder.requests, isEmpty);
+    });
   });
 }

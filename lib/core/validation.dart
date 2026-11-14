@@ -30,6 +30,12 @@ final List<(String, int)> blockedIpv4Cidrs = <(String, int)>[
   ('240.0.0.0', 4),
 ];
 
+/// Injectable DNS resolver for [validateServerUrl]. Defaults to
+/// [InternetAddress.lookup] in production; tests can stub this to avoid
+/// live network/DNS calls.
+Future<List<InternetAddress>> Function(String host) dnsLookup =
+    InternetAddress.lookup;
+
 /// Returns `true` when [host] is a public, non-private IP/host.
 /// Domain names (non-IP hosts) are allowed — IP-based SSRF mitigations
 /// apply only to literal IP addresses. DNS-rebinding protection is handled
@@ -219,7 +225,7 @@ Future<void> validateServerUrl(String serverUrl) async {
   if (address == null) {
     // Domain name — resolve and validate all resolved IPs.
     try {
-      final resolved = await InternetAddress.lookup(uri.host).timeout(
+      final resolved = await dnsLookup(uri.host).timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw ArgumentError('DNS lookup timed out'),
       );
