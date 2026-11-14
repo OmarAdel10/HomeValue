@@ -29,12 +29,23 @@ class ComparisonRemoteDataSource {
     if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host: SSRF protection');
     }
+    // Resolve DNS at request time and re-validate every resolved IP to
+    // prevent DNS rebinding TOCTOU for domain-name hosts.
     _resolveAndValidateHost(uri.host);
   }
 
-  void _resolveAndValidateHost(String host) {
+  Future<void> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
     if (resolved == null) {
+      final addresses = await InternetAddress.lookup(host);
+      if (addresses.isEmpty) {
+        throw ArgumentError('DNS resolution returned no addresses');
+      }
+      for (final address in addresses) {
+        if (!isAllowedHost(address.address)) {
+          throw ArgumentError('Resolved host is blocked: SSRF protection');
+        }
+      }
       return;
     }
     if (!isAllowedHost(resolved.address)) {
@@ -42,11 +53,19 @@ class ComparisonRemoteDataSource {
     }
   }
 
+  void _rejectRedirect(http.Response response) {
+    if (response.statusCode >= 300 && response.statusCode < 400) {
+      throw http.ClientException(
+          'Redirect not followed', response.request?.url);
+    }
+  }
+
   Future<ModelComparisonModel> fetchModelComparison() async {
     _assertAllowedHost(baseUrl);
     final uri = Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
-    final response = await client.get(uri);
+    final response = await client.get(uri).timeout(AppConstants.apiTimeout);
 
+    _rejectRedirect(response);
     if (response.statusCode == 200) {
       return ModelComparisonModel.fromJson(response.body);
     } else {

@@ -77,6 +77,19 @@ bool isAllowedHost(String host) {
         bytes[7] == 0 &&
         bytes[8] == 0 &&
         bytes[9] == 0) {
+      return false; // IPv4-compatible IPv6 ::a.b.c.d (incl ::127.0.0.1)
+    }
+    // Defense-in-depth: explicit IPv4-mapped IPv6 ::ffff:a.b.c.d check
+    // (already covered by ::a.b.c.d rule above, but made explicit for clarity).
+    if (bytes.length == 16 &&
+        bytes[0] == 0 &&
+        bytes[1] == 0 &&
+        bytes[2] == 0 &&
+        bytes[3] == 0 &&
+        bytes[4] == 0 &&
+        bytes[5] == 0 &&
+        bytes[6] == 0xff &&
+        bytes[7] == 0xff) {
       return false;
     }
     return true;

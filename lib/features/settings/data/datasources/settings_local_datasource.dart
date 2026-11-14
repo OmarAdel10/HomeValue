@@ -32,12 +32,11 @@ class SettingsLocalDataSource {
   Future<AppSettings> getSettings() async {
     final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
     // Validate the effective URL (including defaults) at startup so a blocked
-    // default cannot silently enable self-SSRF. A blocked default will prevent
-    // retraining (rejected by _trainUri) but won't block settings load.
+    // default cannot silently enable self-SSRF. A blocked default is tolerated
+    // at load but retraining is rejected by _trainUri.
     try {
       validateServerUrl(serverUrl);
     } on Object {
-      // Default or stored URL is blocked; retraining will be rejected by _trainUri.
       log('Blocked server URL at load; retraining disabled');
     }
     final themeModeIndex = _prefs.getInt(_themeModeKey) ?? _defaultThemeMode;

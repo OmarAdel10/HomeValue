@@ -35,18 +35,38 @@ class PredictionRemoteDataSource implements PredictionRepository {
     if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host: SSRF protection');
     }
+    // Resolve DNS at request time and re-validate every resolved IP to
+    // prevent DNS rebinding TOCTOU for domain-name hosts (e.g. a public
+    // domain that resolves to 127.0.0.1 at connect time).
     _resolveAndValidateHost(uri.host);
   }
 
-  void _resolveAndValidateHost(String host) {
+  Future<void> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
     if (resolved == null) {
-      return; // Domain name: allowlisted by validateServerUrl; DNS rebinding
-      // protection is at the HTTP client / network layer outside this
-      // datasource's scope for non-literal hosts.
+      // Domain name: resolve at request time and fail-closed if any resolved
+      // address is private/link-local/metadata.
+      final addresses = await InternetAddress.lookup(host);
+      if (addresses.isEmpty) {
+        throw ArgumentError('DNS resolution returned no addresses');
+      }
+      for (final address in addresses) {
+        if (!isAllowedHost(address.address)) {
+          throw ArgumentError('Resolved host is blocked: SSRF protection');
+        }
+      }
+      return;
     }
     if (!isAllowedHost(resolved.address)) {
       throw ArgumentError('Resolved host is blocked: SSRF protection');
+    }
+  }
+
+  // Rejects 3xx redirect responses before body handling to prevent SSRF via
+  void _rejectRedirect(http.Response response) {
+    if (response.statusCode >= 300 && response.statusCode < 400) {
+      throw http.ClientException(
+          'Redirect not followed', response.request?.url);
     }
   }
 
@@ -64,6 +84,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
         )
         .timeout(timeout);
 
+    _rejectRedirect(response);
     if (response.statusCode == 200) {
       return PredictionResult.fromJson(jsonDecode(response.body));
     } else if (response.statusCode == 503) {
@@ -92,6 +113,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
         )
         .timeout(timeout);
 
+    _rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return (data['predictions'] as List)
@@ -114,6 +136,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
     final response = await _client.get(uri).timeout(timeout);
 
+    _rejectRedirect(response);
     if (response.statusCode == 200) {
       return ModelInfo.fromJson(jsonDecode(response.body));
     } else {
@@ -131,6 +154,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
     final response = await _client.get(uri).timeout(timeout);
 
+    _rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final models = (data['models'] as List)
