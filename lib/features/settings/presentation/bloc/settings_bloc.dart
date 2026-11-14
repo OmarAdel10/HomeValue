@@ -72,9 +72,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   /// fail-closed resolved-IP revalidation in _trainUri; redirect responses
   /// are rejected by _triggerRetrain (3xx status codes are not followed).
   static http.Client _createClient() {
-    // Redirect prevention relies on validateServerUrl allowlisting +
-    // fail-closed resolved-IP revalidation in _trainUri; 3xx responses
-    // are rejected by _triggerRetrain (status >= 300 throws).
+    // IOClient does not follow HTTP redirects by default; each request is a
+    // single hop. 3xx responses reaching _triggerRetrain are rejected there
+    // (status >= 300 throws), providing defense-in-depth against redirect-based
+    // SSRF to private/metadata targets.
     return IOClient(HttpClient());
   }
 
