@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/constants.dart';
+import '../../data/datasources/settings_local_datasource.dart';
 import '../../domain/entities/app_settings.dart';
 import '../../domain/repositories/settings_repository.dart';
 import 'settings_event.dart';
@@ -55,6 +56,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     try {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
+      _failureCount = 0;
       emit(SettingsLoaded(settings));
       _syncTimer(settings.autoRetrain);
     } catch (e) {
@@ -69,6 +71,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     try {
       final settings = await repository.updateServerUrl(event.serverUrl);
       _lastKnownSettings = settings;
+      _failureCount = 0;
       emit(SettingsLoaded(settings));
     } catch (e) {
       emit(_failure(e));
@@ -82,6 +85,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     try {
       final settings = await repository.updateThemeMode(event.themeMode);
       _lastKnownSettings = settings;
+      _failureCount = 0;
       emit(SettingsLoaded(settings));
     } catch (e) {
       emit(_failure(e));
@@ -96,6 +100,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     try {
       final settings = await repository.updateAutoRetrain(event.autoRetrain);
       _lastKnownSettings = settings;
+      _failureCount = 0;
       emit(SettingsLoaded(settings));
       if (!settings.autoRetrain) {
         _autoRetrainTimer?.cancel();
@@ -169,10 +174,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (lastSuccess != null && now.difference(lastSuccess) < retrainInterval) {
       return false;
     }
-    final lastAttempt = _lastAttemptAt;
-    if (lastAttempt != null && now.difference(lastAttempt) < retrainInterval) {
-      return false;
-    }
     return true;
   }
 
@@ -185,6 +186,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   void _onTimerFired() {
+    if (isClosed) {
+      return;
+    }
     if (!_isEnabled) {
       return;
     }
@@ -192,6 +196,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   Uri _trainUri(String serverUrl) {
+    SettingsLocalDataSource.validateServerUrl(serverUrl);
     final baseUrl = serverUrl.replaceAll(RegExp(r'/+$'), '');
     return Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
   }
@@ -212,14 +217,14 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       attemptStarted = true;
       uri = _trainUri(settings.serverUrl);
       final response =
-          await _httpClient.post(uri).timeout(const Duration(minutes: 10));
+          await _httpClient.post(uri).timeout(const Duration(seconds: 30));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw http.ClientException('retrain rejected', uri);
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
     } catch (e) {
       // Log outcome only; never log the URL or raw exception text.
-      log('Auto-retrain failed: ${e.runtimeType} ${uri?.path ?? ''}');
+      log('Auto-retrain failed');
     } finally {
       _retrainInFlight = false;
       if (attemptStarted) {
