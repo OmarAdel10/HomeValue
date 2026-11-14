@@ -11,7 +11,7 @@ class SettingsLocalDataSource {
   static bool isAllowedHost(String host) => validation.isAllowedHost(host);
 
   /// Delegates to the shared URL validator in `lib/core/validation.dart`.
-  static void validateServerUrl(String serverUrl) =>
+  static Future<void> validateServerUrl(String serverUrl) async =>
       validation.validateServerUrl(serverUrl);
 
   static const String _themeModeKey = 'theme_mode';
@@ -31,14 +31,16 @@ class SettingsLocalDataSource {
 
   /// Whether the currently configured server URL is blocked by SSRF rules.
   /// When true, retraining must not proceed even if auto-retrain is enabled.
+  /// Uses synchronous host allowlisting (no DNS resolution); domain-based
+  // SSRF is caught at request time in `_trainUri` via async DNS resolve +
+  // revalidation.
   bool get serverUrlBlocked {
     final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
-    try {
-      validateServerUrl(serverUrl);
-      return false;
-    } on ArgumentError {
-      return true;
+    final uri = Uri.tryParse(serverUrl);
+    if (uri == null || uri.host.isEmpty) {
+      return true; // malformed or empty host: fail closed
     }
+    return !isAllowedHost(uri.host);
   }
 
   Future<AppSettings> getSettings() async {
@@ -48,7 +50,7 @@ class SettingsLocalDataSource {
     // at load; retraining fails closed on each attempt (checked via
     // serverUrlBlocked).
     try {
-      validateServerUrl(serverUrl);
+      await validateServerUrl(serverUrl);
     } on ArgumentError {
       log('Blocked server URL at load; retraining will fail closed');
     }
@@ -80,7 +82,7 @@ class SettingsLocalDataSource {
 
   Future<AppSettings> updateServerUrl(String serverUrl) async {
     final trimmed = serverUrl.trim();
-    validateServerUrl(trimmed);
+    await validateServerUrl(trimmed);
     await _prefs.setString(_serverUrlKey, trimmed);
     return getSettings();
   }

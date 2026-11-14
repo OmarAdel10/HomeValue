@@ -179,8 +179,11 @@ bool _ipv4InBlockedRange(String ip) {
 }
 
 /// Validates [serverUrl] before it is persisted: scheme must be http/https
-/// and host must not be private/link-local/metadata. Throws on invalid input.
-void validateServerUrl(String serverUrl) {
+/// and host must not be private/link-local/metadata. Domain names are
+/// resolved and every resolved IP is re-validated to prevent domain-based
+/// SSRF (e.g. metadata.google.internal resolving to 169.254.169.254).
+/// Throws on invalid input. Fail-closed: any DNS failure throws.
+Future<void> validateServerUrl(String serverUrl) async {
   // Reject raw input containing whitespace or control characters before
   // parsing, since Uri.tryParse may normalize or drop them.
   if (serverUrl.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {
@@ -209,11 +212,36 @@ void validateServerUrl(String serverUrl) {
   if (!isAllowedHost(uri.host)) {
     throw ArgumentError('Blocked host');
   }
+  // Resolve+revalidate domain names at persist time to prevent domain-based
+  // SSRF (e.g. metadata.google.internal resolving to 169.254.169.254).
+  // Literal IPs are already validated by isAllowedHost above.
+  final address = InternetAddress.tryParse(uri.host);
+  if (address == null) {
+    // Domain name — resolve and validate all resolved IPs.
+    try {
+      final resolved = await InternetAddress.lookup(uri.host).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw ArgumentError('DNS lookup timed out'),
+      );
+      if (resolved.isEmpty) {
+        throw ArgumentError('DNS resolution returned no addresses');
+      }
+      for (final ip in resolved) {
+        if (!isAllowedHost(ip.address)) {
+          throw ArgumentError('Resolved host is blocked');
+        }
+      }
+    } on ArgumentError {
+      rethrow;
+    }
+  }
 }
 
 /// Asserts that [url]'s host is allowed (not private/link-local/metadata).
 /// Throws ArgumentError if blocked — fail-closed for SSRF mitigation.
 void assertAllowedHost(String url) {
+  // Trim before parsing to avoid whitespace/control-char edge cases.
+  url = url.trim();
   final uri = Uri.tryParse(url);
   if (uri == null || !uri.hasAuthority) {
     throw ArgumentError('Invalid URL');
@@ -237,8 +265,9 @@ void assertAllowedHost(String url) {
 
 /// Rejects a redirect response to prevent redirect-based SSRF.
 /// Throws [http.ClientException] for 3xx status codes.
+/// The exception message never embeds the URL (no SSRF target leakage).
 void rejectRedirect(http.Response response) {
   if (response.statusCode >= 300 && response.statusCode < 400) {
-    throw http.ClientException('Redirect not followed', response.request?.url);
+    throw http.ClientException('Redirect not followed: SSRF protection');
   }
 }

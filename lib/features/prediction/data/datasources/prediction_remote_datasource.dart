@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../../../../core/constants.dart';
 import '../../../../core/validation.dart';
@@ -22,7 +23,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
     required this.timeout,
     this.baseUrlProvider,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
+  })  : _client = client ??
+            IOClient(
+                HttpClient()), // IOClient does NOT follow redirects by default (defense-in-depth against redirect-based SSRF)
         _ownsClient = client == null {
     assertAllowedHost(baseUrl);
   }

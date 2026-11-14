@@ -142,6 +142,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         if (outcome == _RetrainOutcome.failed) {
           emit(
               _failure(Exception('Auto-retrain failed'), isLoadFailure: false));
+        } else if (outcome == _RetrainOutcome.skippedBlocked) {
+          emit(_failure(Exception('Server URL blocked by SSRF rules'),
+              isLoadFailure: false));
         }
       }
     } catch (e) {
@@ -242,15 +245,37 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   Future<Uri> _trainUri(String serverUrl) async {
-    SettingsLocalDataSource.validateServerUrl(serverUrl);
-    final baseUrl = serverUrl.replaceAll(RegExp(r'/+$'), '');
-    final uri = Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
-    // Resolve hostname at request time, re-validate resolved IPs to prevent
-    // DNS rebinding TOCTOU, then connect directly to the first validated IP so
-    // the retrain POST cannot be re-resolved to a private address at connection
-    // time. Any DNS resolution failure or timeout fails closed.
+    // Sync validation: scheme, host, credentials, hostname allowlist.
+    // (Async DNS resolve + revalidation is done below via stubbable _dnsLookup.)
+    final uri = Uri.tryParse(serverUrl.trim());
+    if (uri == null || !uri.hasAuthority) {
+      throw ArgumentError('Invalid server URL');
+    }
+    if (uri.host.isEmpty) {
+      throw ArgumentError('Invalid server URL');
+    }
+    if (uri.userInfo.isNotEmpty) {
+      throw ArgumentError('Invalid server URL');
+    }
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') {
+      throw ArgumentError(
+          'Unsupported scheme: $scheme (expected http or https)');
+    }
+    if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+      throw ArgumentError('Blocked host');
+    }
+    // Build the retrain URI: strip trailing slashes from server URL, append
+    // the train endpoint path, then pin to the resolved IP.
+    final baseUrl = serverUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final trainUri = Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
+    // Resolve hostname at request time via stubbable _dnsLookup, re-validate
+    // resolved IPs to prevent DNS rebinding TOCTOU, then connect directly to
+    // the first validated IP so the retrain POST cannot be re-resolved to a
+    // private address at connection time. Any DNS resolution failure or
+    // timeout fails closed.
     try {
-      final resolved = await _dnsLookup(uri.host).timeout(
+      final resolved = await _dnsLookup(trainUri.host).timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw ArgumentError('DNS lookup timed out'),
       );
@@ -264,7 +289,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       }
       // Connect directly to the first validated IP so the HTTP client does not
       // re-resolve the hostname at connect time (DNS rebinding TOCTOU).
-      return uri.replace(host: resolved.first.address);
+      return trainUri.replace(host: resolved.first.address);
     } on ArgumentError {
       // A resolved IP is blocked or DNS failed — fail closed, do not proceed.
       rethrow;
@@ -281,13 +306,20 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     _retrainInFlight = true;
     bool isRealAttempt = false;
     Uri? uri;
+    _RetrainOutcome? outcome;
     try {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
       if (!settings.autoRetrain || !_isRetrainDue(settings)) {
+        outcome = _RetrainOutcome.skippedNotDue;
         return _RetrainOutcome.skippedNotDue;
       }
-      isRealAttempt = true;
+      if (repository.serverUrlBlocked) {
+        // Fail-closed: blocked URL never triggers retrain, does not consume
+        // the retrain window clock.
+        outcome = _RetrainOutcome.skippedBlocked;
+        return _RetrainOutcome.skippedBlocked;
+      }
       uri = await _trainUri(settings.serverUrl);
       // _trainUri above already validates serverUrlBlocked/SSRF rules via
       // validateServerUrl + resolved-IP revalidation + IP pinning. Any blocked
@@ -303,25 +335,35 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings ??= settings;
       _consecutiveRetrainFailures = 0;
       isRealAttempt = true;
+      outcome = _RetrainOutcome.performed;
       return _RetrainOutcome.performed;
     } on ArgumentError catch (e) {
       // Blocked resolved IP or DNS failure — fail-closed without consuming
       // the consecutive failure cap (SSRF block is not a retrain failure).
       log('Auto-retrain blocked: ${e.runtimeType}');
+      outcome = _RetrainOutcome.skippedBlocked;
       return _RetrainOutcome.skippedBlocked;
     } catch (e) {
       log('Auto-retrain failed');
       _consecutiveRetrainFailures++;
       isRealAttempt = true;
+      outcome = _RetrainOutcome.failed;
       return _RetrainOutcome.failed;
     } finally {
       _retrainInFlight = false;
       if (isRealAttempt) {
         _lastAttemptAt = _now();
       }
-      if (_isEnabled &&
-          _consecutiveRetrainFailures < _maxConsecutiveRetrainFailures) {
-        _scheduleNextRetrain();
+      // Only reschedule for real attempts (performed/failed) and normal
+      // window skips (skippedNotDue). Never reschedule for skippedBlocked —
+      // blocked URLs must not keep retrying every window.
+      if (outcome == _RetrainOutcome.performed ||
+          outcome == _RetrainOutcome.failed ||
+          outcome == _RetrainOutcome.skippedNotDue) {
+        if (_isEnabled &&
+            _consecutiveRetrainFailures < _maxConsecutiveRetrainFailures) {
+          _scheduleNextRetrain();
+        }
       }
     }
   }

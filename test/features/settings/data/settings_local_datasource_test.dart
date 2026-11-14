@@ -87,7 +87,7 @@ void main() {
 
   test('validateServerUrl accepts public https URL', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'https://example.com/train'),
       returnsNormally,
     );
@@ -100,30 +100,31 @@ void main() {
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl('file:///etc/passwd'),
+      () async =>
+          SettingsLocalDataSource.validateServerUrl('file:///etc/passwd'),
       throwsA(isArgumentError),
     );
   });
 
   test('validateServerUrl rejects malformed input', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl('not-a-url'),
+      () async => SettingsLocalDataSource.validateServerUrl('not-a-url'),
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(''),
+      () async => SettingsLocalDataSource.validateServerUrl(''),
       throwsA(isArgumentError),
     );
   });
 
   test('validateServerUrl blocks loopback IPv4', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://127.0.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://localhost:8000/train'),
       throwsA(isArgumentError),
     );
@@ -131,17 +132,17 @@ void main() {
 
   test('validateServerUrl blocks RFC 1918 private ranges', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://10.0.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://172.16.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://192.168.1.1:8000/train'),
       throwsA(isArgumentError),
     );
@@ -149,7 +150,7 @@ void main() {
 
   test('validateServerUrl blocks link-local and metadata', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://169.254.169.254/train'),
       throwsA(isArgumentError),
     );
@@ -162,7 +163,7 @@ void main() {
       throwsA(isArgumentError),
     );
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://[fe80::1]:8000/train'),
       throwsA(isArgumentError),
     );
@@ -170,7 +171,7 @@ void main() {
 
   test('validateServerUrl allows public IPv6 documentation range', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://[2001:db8::1]:8000/train'),
       returnsNormally,
     );
@@ -180,7 +181,7 @@ void main() {
 
   test('updateServerUrl rejects blocked host and does not persist', () async {
     expect(
-      () => dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
+      () async => dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     expect(prefs.getString('server_url'), isNull);
@@ -212,7 +213,8 @@ void main() {
 
   test('validateServerUrl blocks 0.0.0.0 (CIDR 0/8)', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl('http://0.0.0.0:8000/'),
+      () async =>
+          SettingsLocalDataSource.validateServerUrl('http://0.0.0.0:8000/'),
       throwsA(isArgumentError),
     );
   });
@@ -220,7 +222,7 @@ void main() {
   test('validateServerUrl blocks IPv4-mapped IPv6 loopback ::ffff:127.0.0.1',
       () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://[::ffff:127.0.0.1]:8000/train'),
       throwsA(isArgumentError),
     );
@@ -228,7 +230,7 @@ void main() {
 
   test('validateServerUrl blocks CIDR boundary 10.255.255.255', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://10.255.255.255:8000/train'),
       throwsA(isArgumentError),
     );
@@ -236,7 +238,7 @@ void main() {
 
   test('validateServerUrl blocks CIDR boundary 172.31.255.255', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://172.31.255.255:8000/train'),
       throwsA(isArgumentError),
     );
@@ -244,7 +246,7 @@ void main() {
 
   test('validateServerUrl blocks CIDR boundary 192.168.255.255', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://192.168.255.255:8000/train'),
       throwsA(isArgumentError),
     );
@@ -252,7 +254,7 @@ void main() {
 
   test('validateServerUrl rejects non-numeric IPv4 octet', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://127.0.0.o1:8000/train'),
       throwsA(isArgumentError),
     );
@@ -260,7 +262,7 @@ void main() {
 
   test('validateServerUrl allows public IP outside blocked ranges', () {
     expect(
-      () => SettingsLocalDataSource.validateServerUrl(
+      () async => SettingsLocalDataSource.validateServerUrl(
           'http://8.8.8.8:8000/train'),
       returnsNormally,
     );

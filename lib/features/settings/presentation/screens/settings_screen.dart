@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../data/datasources/settings_local_datasource.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -130,6 +131,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             (uri.scheme != 'http' && uri.scheme != 'https') ||
                             uri.host.isEmpty) {
                           return 'Please enter a valid URL';
+                        }
+                        if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+                          return 'Blocked host: private or reserved addresses are not allowed';
                         }
                         return null;
                       },

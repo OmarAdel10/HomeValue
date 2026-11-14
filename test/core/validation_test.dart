@@ -138,116 +138,117 @@ void main() {
   group('validateServerUrl', () {
     test('accepts public http URL', () {
       expect(
-        () => validateServerUrl('http://example.com/train'),
+        () async => validateServerUrl('http://example.com/train'),
         returnsNormally,
       );
     });
 
     test('accepts public https URL', () {
       expect(
-        () => validateServerUrl('https://example.com/train'),
+        () async => validateServerUrl('https://example.com/train'),
         returnsNormally,
       );
     });
 
     test('rejects non-http/https scheme', () {
       expect(
-        () => validateServerUrl('ftp://example.com/train'),
+        () async => validateServerUrl('ftp://example.com/train'),
         throwsA(isArgumentError),
       );
       expect(
-        () => validateServerUrl('file:///etc/passwd'),
+        () async => validateServerUrl('file:///etc/passwd'),
         throwsA(isArgumentError),
       );
     });
 
     test('rejects malformed input', () {
-      expect(() => validateServerUrl('not-a-url'), throwsA(isArgumentError));
-      expect(() => validateServerUrl(''), throwsA(isArgumentError));
+      expect(
+          () async => validateServerUrl('not-a-url'), throwsA(isArgumentError));
+      expect(() async => validateServerUrl(''), throwsA(isArgumentError));
     });
 
     test('rejects empty host', () {
       expect(
-        () => validateServerUrl('http://:8000/'),
+        () async => validateServerUrl('http://:8000/'),
         throwsA(isArgumentError),
       );
     });
 
     test('rejects host with whitespace', () {
       expect(
-        () => validateServerUrl('http://127 .0.0.1:8000/'),
+        () async => validateServerUrl('http://127 .0.0.1:8000/'),
         throwsA(isArgumentError),
       );
     });
 
     test('rejects embedded credentials (userInfo)', () {
       expect(
-        () => validateServerUrl('http://user:pass@evil.com/'),
+        () async => validateServerUrl('http://user:pass@evil.com/'),
         throwsA(isArgumentError),
       );
     });
 
     test('blocks loopback IPv4', () {
       expect(
-        () => validateServerUrl('http://127.0.0.1:8000/train'),
+        () async => validateServerUrl('http://127.0.0.1:8000/train'),
         throwsA(isArgumentError),
       );
       expect(
-        () => validateServerUrl('http://localhost:8000/train'),
+        () async => validateServerUrl('http://localhost:8000/train'),
         throwsA(isArgumentError),
       );
     });
 
     test('blocks RFC 1918 private ranges', () {
       expect(
-        () => validateServerUrl('http://10.0.0.1:8000/train'),
+        () async => validateServerUrl('http://10.0.0.1:8000/train'),
         throwsA(isArgumentError),
       );
       expect(
-        () => validateServerUrl('http://172.16.0.1:8000/train'),
+        () async => validateServerUrl('http://172.16.0.1:8000/train'),
         throwsA(isArgumentError),
       );
       expect(
-        () => validateServerUrl('http://192.168.1.1:8000/train'),
+        () async => validateServerUrl('http://192.168.1.1:8000/train'),
         throwsA(isArgumentError),
       );
     });
 
     test('blocks link-local and metadata', () {
       expect(
-        () => validateServerUrl('http://169.254.169.254/train'),
+        () async => validateServerUrl('http://169.254.169.254/train'),
         throwsA(isArgumentError),
       );
     });
 
     test('blocks IPv6 loopback and link-local', () {
       expect(
-        () => validateServerUrl('http://[::1]:8000/train'),
+        () async => validateServerUrl('http://[::1]:8000/train'),
         throwsA(isArgumentError),
       );
       expect(
-        () => validateServerUrl('http://[fe80::1]:8000/train'),
+        () async => validateServerUrl('http://[fe80::1]:8000/train'),
         throwsA(isArgumentError),
       );
     });
 
     test('allows public IPv6 documentation range', () {
       expect(
-        () => validateServerUrl('http://[2001:db8::1]:8000/train'),
+        () async => validateServerUrl('http://[2001:db8::1]:8000/train'),
         returnsNormally,
       );
     });
 
     test('blocks alternative IPv4 notation', () {
       expect(
-        () => validateServerUrl('http://2130706433:8000/train'),
+        () async => validateServerUrl('http://2130706433:8000/train'),
         throwsA(isArgumentError),
       );
     });
 
     test('blocks 6to4 embedding private IPv4', () {
       expect(
-        () => validateServerUrl('http://[2002:ac10::1]:8000/train'),
+        () async => validateServerUrl('http://[2002:ac10::1]:8000/train'),
         throwsA(isArgumentError),
       );
     });
