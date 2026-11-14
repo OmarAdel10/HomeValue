@@ -15,13 +15,15 @@ class PredictionRemoteDataSource implements PredictionRepository {
   final Duration timeout;
   final String Function()? baseUrlProvider;
   final http.Client _client;
+  final bool _ownsClient;
 
   PredictionRemoteDataSource({
     required this.baseUrl,
     required this.timeout,
     this.baseUrlProvider,
     http.Client? client,
-  }) : _client = client ?? http.Client() {
+  })  : _client = client ?? http.Client(),
+        _ownsClient = client == null {
     assertAllowedHost(baseUrl);
   }
 
@@ -168,7 +170,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
   }
 
   void dispose() {
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    }
   }
 }
 

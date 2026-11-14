@@ -36,7 +36,7 @@ class SettingsLocalDataSource {
     try {
       validateServerUrl(serverUrl);
       return false;
-    } on Object {
+    } on ArgumentError {
       return true;
     }
   }
