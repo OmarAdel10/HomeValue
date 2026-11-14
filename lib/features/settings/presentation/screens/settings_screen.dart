@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _urlController,
                       decoration: const InputDecoration(
                         labelText: 'Server URL',
-                        hintText: 'http://localhost:8000',
+                        hintText: 'http://example.com:8000',
                         prefixIcon: Icon(Icons.cloud),
                         border: OutlineInputBorder(),
                       ),

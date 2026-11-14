@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../domain/entities/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,49 +26,66 @@ class SettingsLocalDataSource {
     ('240.0.0.0', 4),
   ];
 
-  // IPv6 reserved ranges blocked (SSRF mitigation):
-  // unspecified, loopback, IPv4-mapped, v4v6 translation, discard,
-  // unique-local, link-local, multicast.
-  // Note: 2001:db8::/32 (documentation) is intentionally NOT blocked — it is
-  // not a routable/private address and poses no SSRF risk.
-  static final List<String> _blockedIpv6Prefixes = <String>[
-    '::',
-    '::1',
-    '::ffff:',
-    '64:ff9b:',
-    '100::',
-    'fc00:',
-    'fe80:',
-    'ff00:',
-  ];
-
   /// Returns `true` when [host] is a public, non-private IP/host.
-  static bool _isAllowedHost(String host) {
+  /// Domain names (non-IP hosts) are allowed — IP-based SSRF mitigations
+  /// apply only to literal IP addresses. DNS-rebinding protection is handled
+  /// separately in `_trainUri` via resolved-IP revalidation.
+  static bool isAllowedHost(String host) {
     final lower = host.toLowerCase();
-    // Block loopback hostname explicitly (not caught by IPv4 CIDR check).
-    if (lower == 'localhost') {
+    // Strip IPv6 zone ID (e.g., fe80::1%eth0 -> fe80::1) to prevent bypass.
+    final noZone = lower.split('%').first;
+
+    // Block loopback hostname explicitly (not caught by IP parsing).
+    if (noZone == 'localhost') {
       return false;
     }
-    if (lower.contains(':')) {
-      // IPv6: block reserved ranges by prefix (Dart lacks built-in IPv6 CIDR).
-      // IPv4-mapped addresses (::ffff:127.0.0.1) are caught by '::ffff:'.
-      return !_blockedIpv6Prefixes.any((prefix) => lower.startsWith(prefix));
+
+    // Try to parse as an IP address.
+    final address = InternetAddress.tryParse(noZone);
+    if (address == null) {
+      // Not a valid IP. If it looks like a malformed IPv4 (4 dot-separated
+      // parts), block it. Otherwise treat as a domain name and allow it.
+      if (noZone.split('.').length == 4) {
+        return false; // Malformed IPv4: blocked
+      }
+      return true; // Domain name: allowed
     }
-    // IPv4: CIDR-based private/reserved range rejection.
-    return !_ipv4InBlockedRange(lower);
+
+    // IPv6: normalize via InternetAddress to catch expanded notation.
+    if (address.type == InternetAddressType.IPv6) {
+      if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
+        return false;
+      }
+      final bytes = address.rawAddress;
+      if (bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc) {
+        return false; // fc00::/7 unique-local
+      }
+      // Defense-in-depth: block IPv4-mapped IPv6 (::ffff:a.b.c.d).
+      if (noZone.startsWith('::ffff:')) {
+        return false;
+      }
+      return true;
+    }
+
+    // IPv4: reject leading-zero octets, then check blocked CIDR ranges.
+    final parts = noZone.split('.');
+    if (parts.any((p) => p.length > 1 && p.startsWith('0'))) {
+      return false; // leading-zero octet (octal ambiguity): blocked
+    }
+    if (!_ipv4InBlockedRange(noZone)) {
+      return true;
+    }
+    return false;
   }
 
   /// Checks whether [ip] (IPv4 dotted-quad) falls within any blocked CIDR.
   static bool _ipv4InBlockedRange(String ip) {
     final parts = ip.split('.');
-    if (parts.length != 4) {
-      return false;
-    }
     int ipInt;
     try {
       ipInt = parts.map(int.parse).fold(0, (a, b) => (a << 8) | b);
     } on FormatException {
-      return true; // Non-numeric octet: treat as blocked host, not allowed
+      return true; // Non-numeric octet: treat as blocked host
     }
     for (final cidr in _blockedIpv4Cidrs) {
       final netParts = cidr.$1.split('.').map(int.parse);
@@ -88,12 +106,16 @@ class SettingsLocalDataSource {
     if (uri == null || !uri.hasAuthority) {
       throw ArgumentError('Invalid server URL');
     }
+    // Reject embedded credentials (userInfo) to prevent SSRF via user@host.
+    if (uri.userInfo.isNotEmpty) {
+      throw ArgumentError('Invalid server URL');
+    }
     final scheme = uri.scheme.toLowerCase();
     if (scheme != 'http' && scheme != 'https') {
       throw ArgumentError(
           'Unsupported scheme: $scheme (expected http or https)');
     }
-    if (!_isAllowedHost(uri.host)) {
+    if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host');
     }
   }

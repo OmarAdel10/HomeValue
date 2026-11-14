@@ -15,7 +15,7 @@ class AppSettings extends Equatable {
   });
 
   factory AppSettings.defaults() => const AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );

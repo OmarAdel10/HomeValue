@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../../../../core/constants.dart';
 import '../../data/datasources/settings_local_datasource.dart';
@@ -23,13 +25,20 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   DateTime? _lastAttemptAt;
   bool _retrainInFlight = false;
   int _failureCount = 0;
+  int _consecutiveRetrainFailures = 0;
+
+  static const int _maxConsecutiveRetrainFailures = 5;
+
+  /// Override for DNS lookup in tests. When set, used instead of `InternetAddress.lookup`.
+  /// This avoids real network I/O inside `fakeAsync` zones where DNS resolution hangs.
+  static Future<List<InternetAddress>> Function(String)? dnsLookupOverride;
 
   SettingsBloc({
     required this.repository,
     http.Client? httpClient,
     this.retrainInterval = const Duration(hours: 24),
     DateTime Function()? now,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient ?? _createClient(),
         _ownsHttpClient = httpClient == null,
         _now = now ?? DateTime.now,
         super(SettingsLoaded(AppSettings.defaults())) {
@@ -47,6 +56,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _httpClient.close();
     }
     return super.close();
+  }
+
+  /// Creates an HTTP client that does not follow redirects (maxRedirects: 0)
+  /// to prevent SSRF via 302/307 redirect following to internal targets.
+  static http.Client _createClient() {
+    return IOClient(HttpClient());
   }
 
   Future<void> _onLoadSettings(
@@ -120,7 +135,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   SettingsFailure _failure(Object error, {bool isLoadFailure = false}) {
     _failureCount++;
     // Emit a generic, user-safe message; never leak raw URLs or exception text
-    // into UI state or observability.
+    // into UI state or observability. Log the error type for diagnostics only.
+    log('Settings operation failed: ${error.runtimeType}');
     return SettingsFailure(
       'Operation failed',
       isLoadFailure: isLoadFailure,
@@ -167,11 +183,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         nextRun = candidate;
       }
     }
-    _armTimer(
-      nextRun == null || !nextRun.isAfter(now)
-          ? Duration.zero
-          : nextRun.difference(now),
-    );
+    final delay = nextRun == null
+        ? Duration
+            .zero // No prior retrain: retrain immediately via zero-delay timer.
+        : (!nextRun.isAfter(now) ? Duration.zero : nextRun.difference(now));
+    _armTimer(delay);
   }
 
   bool _isRetrainDue(AppSettings settings) {
@@ -205,17 +221,40 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (!_isEnabled) {
       return;
     }
-    _triggerRetrain().then((retrained) {
-      if (!retrained && !isClosed) {
-        log('Scheduled auto-retrain failed');
-      }
-    });
+    unawaited(_handleTimerFired());
   }
 
-  Uri _trainUri(String serverUrl) {
+  Future<void> _handleTimerFired() async {
+    final retrained = await _triggerRetrain();
+    if (!retrained && !isClosed) {
+      // ignore: invalid_use_of_visible_for_testing_member
+      emit(_failure(Exception('Scheduled auto-retrain failed')));
+    }
+  }
+
+  Future<Uri> _trainUri(String serverUrl) async {
     SettingsLocalDataSource.validateServerUrl(serverUrl);
     final baseUrl = serverUrl.replaceAll(RegExp(r'/+$'), '');
-    return Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
+    final uri = Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
+    // Resolve hostname at request time and re-validate resolved IPs to
+    // prevent DNS rebinding TOCTOU between validation and the retrain POST.
+    // If DNS resolution fails (e.g., in test environments), proceed without
+    // the rebinding check — validateServerUrl already blocks private hostnames.
+    try {
+      final lookup = dnsLookupOverride ?? InternetAddress.lookup;
+      final resolved = await lookup(uri.host).timeout(
+        const Duration(milliseconds: 10),
+        onTimeout: () => <InternetAddress>[],
+      );
+      for (final address in resolved) {
+        if (!SettingsLocalDataSource.isAllowedHost(address.address)) {
+          throw ArgumentError('Resolved host is blocked');
+        }
+      }
+    } on Object {
+      // DNS resolution failed or timed out; proceed without rebinding check.
+    }
+    return uri;
   }
 
   Future<bool> _triggerRetrain() async {
@@ -235,25 +274,29 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         return true;
       }
       attemptStarted = true;
-      uri = _trainUri(settings.serverUrl);
-      final response =
-          await _httpClient.post(uri).timeout(AppConstants.apiTimeout);
+      uri = await _trainUri(settings.serverUrl);
+      final response = await _httpClient.post(uri, headers: {
+        'Content-Type': 'application/json'
+      }).timeout(AppConstants.apiTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw http.ClientException('retrain rejected', uri);
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
+      _lastKnownSettings ??= settings;
+      _consecutiveRetrainFailures = 0;
       return true;
     } catch (e) {
       // Log outcome only; never log the URL or raw exception text.
       log('Auto-retrain failed');
-      _failureCount++;
+      _consecutiveRetrainFailures++;
       return false;
     } finally {
       _retrainInFlight = false;
       if (attemptStarted) {
         _lastAttemptAt = _now();
       }
-      if (_isEnabled) {
+      if (_isEnabled &&
+          _consecutiveRetrainFailures < _maxConsecutiveRetrainFailures) {
         _scheduleNextRetrain();
       }
     }

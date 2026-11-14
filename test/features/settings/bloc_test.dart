@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bloc_test/bloc_test.dart';
 import 'package:fake_async/fake_async.dart';
@@ -33,6 +34,12 @@ void main() {
     ));
     registerFallbackValue(ThemeMode.system);
     registerFallbackValue(DateTime(2026));
+    // Bypass real DNS lookup inside fakeAsync zones where it hangs.
+    SettingsBloc.dnsLookupOverride = (host) async => <InternetAddress>[];
+  });
+
+  tearDownAll(() {
+    SettingsBloc.dnsLookupOverride = null;
   });
 
   group('SettingsBloc', () {
@@ -616,7 +623,7 @@ void main() {
         expect(failingRequests, hasLength(2));
 
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
-        expect(bloc.state, isA<SettingsLoaded>());
+        expect(bloc.state, isA<SettingsFailure>());
 
         bloc.close();
         async.flushMicrotasks();
