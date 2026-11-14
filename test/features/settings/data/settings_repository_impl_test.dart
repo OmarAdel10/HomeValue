@@ -13,7 +13,7 @@ void main() {
   late SettingsRepositoryImpl repository;
 
   const settings = AppSettings(
-    serverUrl: 'http://localhost:8000',
+    serverUrl: 'http://example.com:8000',
     themeMode: ThemeMode.system,
     autoRetrain: false,
   );

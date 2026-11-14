@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import '../../../../core/constants.dart';
-import '../../data/datasources/settings_local_datasource.dart';
+import '../../../../core/validation.dart';
 import '../../domain/entities/app_settings.dart';
 import '../../domain/repositories/settings_repository.dart';
 import 'settings_event.dart';
@@ -262,7 +262,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       throw ArgumentError(
           'Unsupported scheme: $scheme (expected http or https)');
     }
-    if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+    if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host');
     }
     // Build the retrain URI: strip trailing slashes from server URL, append
@@ -283,7 +283,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         throw ArgumentError('DNS resolution returned no addresses');
       }
       for (final address in resolved) {
-        if (!SettingsLocalDataSource.isAllowedHost(address.address)) {
+        if (!isAllowedHost(address.address)) {
           throw ArgumentError('Resolved host is blocked');
         }
       }
@@ -329,7 +329,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         'Content-Type': 'application/json'
       }).timeout(AppConstants.apiTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw http.ClientException('retrain rejected', uri);
+        throw http.ClientException('retrain rejected');
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
       _lastKnownSettings ??= settings;

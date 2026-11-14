@@ -1,25 +1,35 @@
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../../../../core/constants.dart';
 import '../../../../core/validation.dart';
 import '../models/model_comparison_model.dart';
 
 class ComparisonRemoteDataSource {
-  final http.Client client;
+  final http.Client _client;
+  final bool _ownsClient;
   final String _baseUrl;
   final String Function()? baseUrlProvider;
 
   ComparisonRemoteDataSource({
-    required this.client,
+    http.Client? client,
     required String baseUrl,
     this.baseUrlProvider,
-  }) : _baseUrl = baseUrl {
+  })  : _client = client ?? IOClient(HttpClient()),
+        _ownsClient = client == null,
+        _baseUrl = baseUrl {
     assertAllowedHost(baseUrl);
   }
 
   String get baseUrl => baseUrlProvider?.call() ?? _baseUrl;
+
+  void dispose() {
+    if (_ownsClient) {
+      _client.close();
+    }
+  }
 
   // Resolve DNS at request time, re-validate every resolved IP, and return
   // the first validated IP to pin the connection (prevents DNS rebinding TOCTOU
@@ -52,7 +62,7 @@ class ComparisonRemoteDataSource {
         Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = baseUri.replace(host: resolvedHost);
-    final response = await client.get(uri).timeout(AppConstants.apiTimeout);
+    final response = await _client.get(uri).timeout(AppConstants.apiTimeout);
 
     rejectRedirect(response);
     if (response.statusCode == 200) {

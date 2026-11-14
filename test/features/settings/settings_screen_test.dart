@@ -49,7 +49,7 @@ void main() {
 
     testWidgets('shows settings form when loaded', (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
@@ -138,13 +138,13 @@ void main() {
 
     testWidgets('toggles theme mode', (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
 
       const darkSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.dark,
         autoRetrain: false,
       );
@@ -186,13 +186,13 @@ void main() {
 
     testWidgets('toggles auto retrain switch', (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
 
       const updatedSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: true,
       );
@@ -230,7 +230,7 @@ void main() {
 
     testWidgets('shows about section', (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
@@ -274,7 +274,7 @@ void main() {
     testWidgets('shows an error with retry when loading settings fails',
         (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
@@ -326,7 +326,7 @@ void main() {
     testWidgets('keeps the form and shows a snackbar when an update fails',
         (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
