@@ -27,7 +27,7 @@ class RetrainRecorder {
 void main() {
   setUpAll(() {
     registerFallbackValue(const AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
     ));
@@ -50,13 +50,13 @@ void main() {
     });
 
     const testSettings = AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
     );
 
     const updatedSettings = AppSettings(
-      serverUrl: 'http://192.168.1.100:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
     );
@@ -87,8 +87,7 @@ void main() {
         return SettingsBloc(repository: mockRepository);
       },
       seed: () => const SettingsLoaded(testSettings),
-      act: (bloc) =>
-          bloc.add(const UpdateServerUrl('http://192.168.1.100:8000')),
+      act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:8000')),
       expect: () => [
         isA<SettingsLoaded>(),
       ],
@@ -161,7 +160,7 @@ void main() {
         return SettingsBloc(repository: mockRepository);
       },
       seed: () => const SettingsLoaded(testSettings),
-      act: (bloc) => bloc.add(const UpdateServerUrl('http://localhost:9000')),
+      act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:9000')),
       expect: () => [
         isA<SettingsFailure>()
             .having((state) => state.isLoadFailure, 'isLoadFailure', false),
@@ -184,19 +183,19 @@ void main() {
     );
 
     const enabledSettings = AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
     );
 
     const enabledDarkSettings = AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
     );
 
     const enabledMovedSettings = AppSettings(
-      serverUrl: 'http://192.168.1.100:8000',
+      serverUrl: 'http://example.com:9000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
     );
@@ -232,7 +231,7 @@ void main() {
         expect(recorder.requests.single.method, 'POST');
         expect(
           recorder.requests.single.url.toString(),
-          'http://localhost:8000/train',
+          'http://example.com:8000/train',
         );
       },
     );
@@ -283,8 +282,7 @@ void main() {
         );
       },
       seed: () => const SettingsLoaded(enabledSettings),
-      act: (bloc) =>
-          bloc.add(const UpdateServerUrl('http://192.168.1.100:8000')),
+      act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:9000')),
       wait: const Duration(milliseconds: 50),
       expect: () => [
         isA<SettingsLoaded>(),
@@ -404,13 +402,13 @@ void main() {
     late DateTime current;
 
     const enabledSettings = AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
     );
 
     const enabledDarkSettings = AppSettings(
-      serverUrl: 'http://localhost:8000',
+      serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
     );
@@ -629,7 +627,7 @@ void main() {
       fakeAsync((async) {
         when(() => mockRepository.getSettings()).thenAnswer(
           (_) async => enabledSettings.copyWith(
-            serverUrl: 'http://localhost:8000/api//',
+            serverUrl: 'http://example.com:8000/api//',
           ),
         );
         final bloc = SettingsBloc(
@@ -646,7 +644,7 @@ void main() {
 
         expect(
           recorder.requests.single.url.toString(),
-          'http://localhost:8000/api/train',
+          'http://example.com:8000/api/train',
         );
 
         bloc.close();

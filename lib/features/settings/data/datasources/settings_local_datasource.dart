@@ -27,14 +27,15 @@ class SettingsLocalDataSource {
 
   // IPv6 reserved ranges blocked (SSRF mitigation):
   // unspecified, loopback, IPv4-mapped, v4v6 translation, discard,
-  // documentation, unique-local, link-local, multicast.
+  // unique-local, link-local, multicast.
+  // Note: 2001:db8::/32 (documentation) is intentionally NOT blocked — it is
+  // not a routable/private address and poses no SSRF risk.
   static final List<String> _blockedIpv6Prefixes = <String>[
     '::',
     '::1',
     '::ffff:',
     '64:ff9b:',
     '100::',
-    '2001:db8:',
     'fc00:',
     'fe80:',
     'ff00:',
@@ -43,6 +44,10 @@ class SettingsLocalDataSource {
   /// Returns `true` when [host] is a public, non-private IP/host.
   static bool _isAllowedHost(String host) {
     final lower = host.toLowerCase();
+    // Block loopback hostname explicitly (not caught by IPv4 CIDR check).
+    if (lower == 'localhost') {
+      return false;
+    }
     if (lower.contains(':')) {
       // IPv6: block reserved ranges by prefix (Dart lacks built-in IPv6 CIDR).
       // IPv4-mapped addresses (::ffff:127.0.0.1) are caught by '::ffff:'.

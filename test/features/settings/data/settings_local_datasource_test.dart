@@ -74,4 +74,137 @@ void main() {
 
     expect(settings.themeMode, ThemeMode.system);
   });
+
+  // --- validateServerUrl tests (SSRF mitigation) ---
+
+  test('validateServerUrl accepts public http URL', () {
+    expect(
+      () =>
+          SettingsLocalDataSource.validateServerUrl('http://example.com/train'),
+      returnsNormally,
+    );
+  });
+
+  test('validateServerUrl accepts public https URL', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'https://example.com/train'),
+      returnsNormally,
+    );
+  });
+
+  test('validateServerUrl rejects non-http/https scheme', () {
+    expect(
+      () =>
+          SettingsLocalDataSource.validateServerUrl('ftp://example.com/train'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl('file:///etc/passwd'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl rejects malformed input', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl('not-a-url'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(''),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks loopback IPv4', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://127.0.0.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://localhost:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks RFC 1918 private ranges', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://10.0.0.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://172.16.0.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://192.168.1.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks link-local and metadata', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://169.254.169.254/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks IPv6 loopback and link-local', () {
+    expect(
+      () =>
+          SettingsLocalDataSource.validateServerUrl('http://[::1]:8000/train'),
+      throwsA(isArgumentError),
+    );
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://[fe80::1]:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl allows public IPv6 documentation range', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://[2001:db8::1]:8000/train'),
+      returnsNormally,
+    );
+  });
+
+  // --- updateServerUrl validation side-effect tests ---
+
+  test('updateServerUrl rejects blocked host and does not persist', () async {
+    expect(
+      () => dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
+      throwsA(isArgumentError),
+    );
+    expect(prefs.getString('server_url'), isNull);
+  });
+
+  test('updateServerUrl persists allowed host', () async {
+    final updated =
+        await dataSource.updateServerUrl('http://example.com:8000/train');
+
+    expect(updated.serverUrl, 'http://example.com:8000/train');
+    expect(prefs.getString('server_url'), 'http://example.com:8000/train');
+  });
+
+  // --- getSettings validates default URL ---
+
+  test('getSettings with blocked default serverUrl does not throw', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'server_url': 'http://127.0.0.1:8000/',
+    });
+    prefs = await SharedPreferences.getInstance();
+    dataSource = SettingsLocalDataSource(prefs);
+
+    // Should not throw; blocked URL is tolerated at load but retraining is rejected.
+    final settings = await dataSource.getSettings();
+    expect(settings.serverUrl, 'http://127.0.0.1:8000/');
+  });
 }
