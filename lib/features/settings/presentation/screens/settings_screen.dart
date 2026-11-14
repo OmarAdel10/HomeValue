@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../data/datasources/settings_local_datasource.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -123,12 +124,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter a server URL';
                         }
-                        final uri = Uri.tryParse(value.trim());
+                        final trimmed = value.trim();
+                        final uri = Uri.tryParse(trimmed);
                         if (uri == null ||
                             !uri.hasScheme ||
                             (uri.scheme != 'http' && uri.scheme != 'https') ||
                             uri.host.isEmpty) {
                           return 'Please enter a valid URL';
+                        }
+                        try {
+                          SettingsLocalDataSource.validateServerUrl(trimmed);
+                        } on ArgumentError {
+                          return 'Server URL is not allowed (private or blocked host)';
                         }
                         return null;
                       },

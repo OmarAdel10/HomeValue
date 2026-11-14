@@ -87,13 +87,13 @@ void main() {
     testWidgets('updates server URL when form is submitted',
         (WidgetTester tester) async {
       const testSettings = AppSettings(
-        serverUrl: 'http://localhost:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
 
       const updatedSettings = AppSettings(
-        serverUrl: 'http://192.168.1.100:8000',
+        serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
       );
@@ -101,7 +101,7 @@ void main() {
       when(() => mockRepository.getSettings()).thenAnswer(
         (_) async => testSettings,
       );
-      when(() => mockRepository.updateServerUrl('http://192.168.1.100:8000/'))
+      when(() => mockRepository.updateServerUrl('http://example.com:8000/'))
           .thenAnswer(
         (_) async => updatedSettings,
       );
@@ -125,14 +125,14 @@ void main() {
 
       // Enter new server URL with trailing slash to pass validation
       await tester.enterText(
-          find.byType(TextFormField), 'http://192.168.1.100:8000/');
+          find.byType(TextFormField), 'http://example.com:8000/');
       await tester.pumpAndSettle();
 
       // Tap save button
       await tester.tap(find.text('Save Server URL'));
       await tester.pumpAndSettle();
 
-      verify(() => mockRepository.updateServerUrl('http://192.168.1.100:8000/'))
+      verify(() => mockRepository.updateServerUrl('http://example.com:8000/'))
           .called(1);
     });
 
