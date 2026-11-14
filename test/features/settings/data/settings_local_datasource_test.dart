@@ -18,7 +18,7 @@ void main() {
   test('returns defaults when nothing is stored', () async {
     final settings = await dataSource.getSettings();
 
-    expect(settings.serverUrl, 'http://localhost:8000');
+    expect(settings.serverUrl, 'http://example.com:8000');
     expect(settings.themeMode, ThemeMode.system);
     expect(settings.autoRetrain, isFalse);
     expect(settings.lastAutoRetrainAt, isNull);
@@ -206,5 +206,63 @@ void main() {
     // Should not throw; blocked URL is tolerated at load but retraining is rejected.
     final settings = await dataSource.getSettings();
     expect(settings.serverUrl, 'http://127.0.0.1:8000/');
+  });
+
+  // --- SSRF edge-case tests ---
+
+  test('validateServerUrl blocks 0.0.0.0 (CIDR 0/8)', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl('http://0.0.0.0:8000/'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks IPv4-mapped IPv6 loopback ::ffff:127.0.0.1',
+      () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://[::ffff:127.0.0.1]:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks CIDR boundary 10.255.255.255', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://10.255.255.255:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks CIDR boundary 172.31.255.255', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://172.31.255.255:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl blocks CIDR boundary 192.168.255.255', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://192.168.255.255:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl rejects non-numeric IPv4 octet', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://127.0.0.o1:8000/train'),
+      throwsA(isArgumentError),
+    );
+  });
+
+  test('validateServerUrl allows public IP outside blocked ranges', () {
+    expect(
+      () => SettingsLocalDataSource.validateServerUrl(
+          'http://8.8.8.8:8000/train'),
+      returnsNormally,
+    );
   });
 }

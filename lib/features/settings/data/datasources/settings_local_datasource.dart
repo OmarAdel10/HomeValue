@@ -67,7 +67,7 @@ class SettingsLocalDataSource {
     try {
       ipInt = parts.map(int.parse).fold(0, (a, b) => (a << 8) | b);
     } on FormatException {
-      return false; // Not a numeric IP; treat as hostname (allow).
+      return true; // Non-numeric octet: treat as blocked host, not allowed
     }
     for (final cidr in _blockedIpv4Cidrs) {
       final netParts = cidr.$1.split('.').map(int.parse);
@@ -86,7 +86,7 @@ class SettingsLocalDataSource {
   static void validateServerUrl(String serverUrl) {
     final uri = Uri.tryParse(serverUrl.trim());
     if (uri == null || !uri.hasAuthority) {
-      throw ArgumentError('Invalid server URL: $serverUrl');
+      throw ArgumentError('Invalid server URL');
     }
     final scheme = uri.scheme.toLowerCase();
     if (scheme != 'http' && scheme != 'https') {
@@ -94,8 +94,7 @@ class SettingsLocalDataSource {
           'Unsupported scheme: $scheme (expected http or https)');
     }
     if (!_isAllowedHost(uri.host)) {
-      throw ArgumentError(
-          'Blocked host: ${uri.host} (private/link-local/metadata not allowed)');
+      throw ArgumentError('Blocked host');
     }
   }
 
@@ -103,7 +102,7 @@ class SettingsLocalDataSource {
   static const String _autoRetrainKey = 'auto_retrain';
   static const String _lastAutoRetrainKey = 'last_auto_retrain_at';
 
-  static const String _defaultServerUrl = 'http://localhost:8000';
+  static const String _defaultServerUrl = 'http://example.com:8000';
   static const int _defaultThemeMode = 0; // ThemeMode.system
   static const bool _defaultAutoRetrain = false;
 

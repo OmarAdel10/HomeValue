@@ -106,7 +106,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         _autoRetrainTimer?.cancel();
         _autoRetrainTimer = null;
       } else if (!wasEnabled) {
-        unawaited(_triggerRetrain());
+        final retrained = await _triggerRetrain();
+        if (!retrained) {
+          emit(
+              _failure(Exception('Auto-retrain failed'), isLoadFailure: false));
+        }
       }
     } catch (e) {
       emit(_failure(e));
@@ -201,7 +205,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (!_isEnabled) {
       return;
     }
-    unawaited(_triggerRetrain());
+    _triggerRetrain().then((retrained) {
+      if (!retrained && !isClosed) {
+        log('Scheduled auto-retrain failed');
+      }
+    });
   }
 
   Uri _trainUri(String serverUrl) {
@@ -210,12 +218,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     return Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
   }
 
-  Future<void> _triggerRetrain() async {
+  Future<bool> _triggerRetrain() async {
     if (isClosed) {
-      return;
+      return true;
     }
     if (_retrainInFlight) {
-      return;
+      return true;
     }
     _retrainInFlight = true;
     var attemptStarted = false;
@@ -224,7 +232,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
       if (!settings.autoRetrain || !_isRetrainDue(settings)) {
-        return;
+        return true;
       }
       attemptStarted = true;
       uri = _trainUri(settings.serverUrl);
@@ -234,10 +242,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         throw http.ClientException('retrain rejected', uri);
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
+      return true;
     } catch (e) {
       // Log outcome only; never log the URL or raw exception text.
       log('Auto-retrain failed');
       _failureCount++;
+      return false;
     } finally {
       _retrainInFlight = false;
       if (attemptStarted) {
