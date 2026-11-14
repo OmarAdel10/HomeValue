@@ -34,12 +34,6 @@ void main() {
     ));
     registerFallbackValue(ThemeMode.system);
     registerFallbackValue(DateTime(2026));
-    // Bypass real DNS lookup inside fakeAsync zones where it hangs.
-    SettingsBloc.dnsLookupOverride = (host) async => <InternetAddress>[];
-  });
-
-  tearDownAll(() {
-    SettingsBloc.dnsLookupOverride = null;
   });
 
   group('SettingsBloc', () {
@@ -49,7 +43,10 @@ void main() {
 
     setUp(() {
       mockRepository = MockSettingsRepository();
-      settingsBloc = SettingsBloc(repository: mockRepository);
+      settingsBloc = SettingsBloc(
+        repository: mockRepository,
+        dnsLookup: (host) async => <InternetAddress>[],
+      );
     });
 
     tearDown(() {
@@ -74,7 +71,10 @@ void main() {
         when(() => mockRepository.getSettings()).thenAnswer(
           (_) async => testSettings,
         );
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       act: (bloc) => bloc.add(const LoadSettings()),
       expect: () => [
@@ -91,7 +91,10 @@ void main() {
         when(() => mockRepository.updateServerUrl(any())).thenAnswer(
           (_) async => updatedSettings,
         );
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:8000')),
@@ -109,7 +112,10 @@ void main() {
         when(() => mockRepository.updateThemeMode(any())).thenAnswer(
           (_) async => updatedSettings,
         );
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const ToggleTheme(ThemeMode.dark)),
@@ -135,6 +141,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 1),
         );
       },
@@ -150,7 +157,10 @@ void main() {
       build: () {
         when(() => mockRepository.getSettings())
             .thenThrow(Exception('disk unavailable'));
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       act: (bloc) => bloc.add(const LoadSettings()),
       expect: () => [
@@ -164,7 +174,10 @@ void main() {
       build: () {
         when(() => mockRepository.updateServerUrl(any()))
             .thenThrow(Exception('disk unavailable'));
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:9000')),
@@ -179,7 +192,10 @@ void main() {
       build: () {
         when(() => mockRepository.updateThemeMode(any()))
             .thenThrow(Exception('disk unavailable'));
-        return SettingsBloc(repository: mockRepository);
+        return SettingsBloc(
+          repository: mockRepository,
+          dnsLookup: (host) async => <InternetAddress>[],
+        );
       },
       seed: () => const SettingsLoaded(testSettings),
       act: (bloc) => bloc.add(const ToggleTheme(ThemeMode.dark)),
@@ -224,6 +240,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 1),
         );
       },
@@ -257,6 +274,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 1),
         );
       },
@@ -285,6 +303,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 1),
         );
       },
@@ -313,6 +332,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 1),
         );
       },
@@ -339,6 +359,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
         );
       },
@@ -367,6 +388,7 @@ void main() {
         return SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
         );
       },
@@ -384,7 +406,10 @@ void main() {
     test('emits a fresh failure for a repeated identical error', () async {
       when(() => mockRepository.updateThemeMode(any()))
           .thenThrow(Exception('disk unavailable'));
-      final bloc = SettingsBloc(repository: mockRepository);
+      final bloc = SettingsBloc(
+        repository: mockRepository,
+        dnsLookup: (host) async => <InternetAddress>[],
+      );
       addTearDown(bloc.close);
 
       final seen = <SettingsState>[];
@@ -463,6 +488,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -496,6 +522,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -522,6 +549,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -546,6 +574,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -576,6 +605,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -604,6 +634,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: failingClient,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -640,6 +671,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -669,6 +701,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: rejectingClient,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -699,6 +732,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: redirectingClient,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -726,6 +760,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: noContentClient,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -752,6 +787,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -780,6 +816,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -811,6 +848,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: recorder.client,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );
@@ -847,6 +885,7 @@ void main() {
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: gatedClient,
+          dnsLookup: (host) async => <InternetAddress>[],
           retrainInterval: const Duration(hours: 24),
           now: clock,
         );

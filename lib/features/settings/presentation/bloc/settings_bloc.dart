@@ -27,20 +27,20 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   int _failureCount = 0;
   int _consecutiveRetrainFailures = 0;
 
-  static const int _maxConsecutiveRetrainFailures = 5;
+  final Future<List<InternetAddress>> Function(String) _dnsLookup;
 
-  /// Override for DNS lookup in tests. When set, used instead of `InternetAddress.lookup`.
-  /// This avoids real network I/O inside `fakeAsync` zones where DNS resolution hangs.
-  static Future<List<InternetAddress>> Function(String)? dnsLookupOverride;
+  static const int _maxConsecutiveRetrainFailures = 5;
 
   SettingsBloc({
     required this.repository,
     http.Client? httpClient,
     this.retrainInterval = const Duration(hours: 24),
     DateTime Function()? now,
+    Future<List<InternetAddress>> Function(String)? dnsLookup,
   })  : _httpClient = httpClient ?? _createClient(),
         _ownsHttpClient = httpClient == null,
         _now = now ?? DateTime.now,
+        _dnsLookup = dnsLookup ?? InternetAddress.lookup,
         super(SettingsLoaded(AppSettings.defaults())) {
     on<LoadSettings>(_onLoadSettings);
     on<UpdateServerUrl>(_onUpdateServerUrl);
@@ -58,8 +58,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     return super.close();
   }
 
-  /// Creates an HTTP client that does not follow redirects (maxRedirects: 0)
+  /// Creates an HTTP client that does not follow redirects
   /// to prevent SSRF via 302/307 redirect following to internal targets.
+  /// Note: HttpClient.maxRedirects was removed in Dart 3.x; redirect
+  /// prevention relies on validateServerUrl host allowlisting instead.
   static http.Client _createClient() {
     return IOClient(HttpClient());
   }
@@ -241,8 +243,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     // If DNS resolution fails (e.g., in test environments), proceed without
     // the rebinding check — validateServerUrl already blocks private hostnames.
     try {
-      final lookup = dnsLookupOverride ?? InternetAddress.lookup;
-      final resolved = await lookup(uri.host).timeout(
+      final resolved = await _dnsLookup(uri.host).timeout(
         const Duration(milliseconds: 10),
         onTimeout: () => <InternetAddress>[],
       );
@@ -251,6 +252,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
           throw ArgumentError('Resolved host is blocked');
         }
       }
+    } on ArgumentError {
+      // A resolved IP is blocked — fail closed, do not proceed with the request.
+      rethrow;
     } on Object {
       // DNS resolution failed or timed out; proceed without rebinding check.
     }

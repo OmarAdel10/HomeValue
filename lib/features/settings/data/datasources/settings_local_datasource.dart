@@ -36,7 +36,7 @@ class SettingsLocalDataSource {
     final noZone = lower.split('%').first;
 
     // Block loopback hostname explicitly (not caught by IP parsing).
-    if (noZone == 'localhost') {
+    if (noZone == 'localhost' || noZone.endsWith('.localhost')) {
       return false;
     }
 
