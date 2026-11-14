@@ -34,18 +34,21 @@ class SettingsLocalDataSource {
     final lower = host.toLowerCase();
     // Strip IPv6 zone ID (e.g., fe80::1%eth0 -> fe80::1) to prevent bypass.
     final noZone = lower.split('%').first;
+    // Strip trailing dot (e.g., localhost. -> localhost) to prevent bypass.
+    final stripped =
+        noZone.endsWith('.') ? noZone.substring(0, noZone.length - 1) : noZone;
 
     // Block loopback hostname explicitly (not caught by IP parsing).
-    if (noZone == 'localhost' || noZone.endsWith('.localhost')) {
+    if (stripped == 'localhost' || stripped.endsWith('.localhost')) {
       return false;
     }
 
     // Try to parse as an IP address.
-    final address = InternetAddress.tryParse(noZone);
+    final address = InternetAddress.tryParse(stripped);
     if (address == null) {
       // Not a valid IP. If it looks like a malformed IPv4 (4 dot-separated
       // parts), block it. Otherwise treat as a domain name and allow it.
-      if (noZone.split('.').length == 4) {
+      if (stripped.split('.').length == 4) {
         return false; // Malformed IPv4: blocked
       }
       return true; // Domain name: allowed
@@ -60,9 +63,24 @@ class SettingsLocalDataSource {
       if (bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc) {
         return false; // fc00::/7 unique-local
       }
-      // Defense-in-depth: block IPv4-mapped IPv6 (::ffff:a.b.c.d).
-      if (noZone.startsWith('::ffff:')) {
-        return false;
+      // Block IPv4-mapped IPv6 (::ffff:a.b.c.d) and IPv4-compatible IPv6
+      // (::a.b.c.d): extract the embedded IPv4 and check it against the
+      // blocklist so ::127.0.0.1 cannot evade the loopback block.
+      if (bytes.length == 16 &&
+          bytes[0] == 0 &&
+          bytes[1] == 0 &&
+          bytes[2] == 0 &&
+          bytes[3] == 0 &&
+          bytes[4] == 0 &&
+          bytes[5] == 0 &&
+          bytes[6] == 0 &&
+          bytes[7] == 0 &&
+          bytes[8] == 0 &&
+          bytes[9] == 0) {
+        final embedded = '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
+        if (_ipv4InBlockedRange(embedded)) {
+          return false;
+        }
       }
       return true;
     }

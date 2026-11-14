@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/constants.dart';
+import '../../../settings/data/datasources/settings_local_datasource.dart';
 import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
@@ -19,12 +20,25 @@ class PredictionRemoteDataSource implements PredictionRepository {
     required this.timeout,
     this.baseUrlProvider,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  }) : _client = client ?? http.Client() {
+    _assertAllowedHost(baseUrl);
+  }
 
   String get _base => baseUrlProvider?.call() ?? baseUrl;
 
+  void _assertAllowedHost(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasAuthority) {
+      throw ArgumentError('Invalid base URL');
+    }
+    if (!SettingsLocalDataSource.isAllowedHost(uri.host)) {
+      throw ArgumentError('Blocked host: SSRF protection');
+    }
+  }
+
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
+    _assertAllowedHost(_base);
     final uri = Uri.parse('$_base${AppConstants.predictEndpoint}');
     final body = jsonEncode(features.toJson());
 
@@ -50,6 +64,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
+    _assertAllowedHost(_base);
     final uri = Uri.parse('$_base${AppConstants.predictBatchEndpoint}');
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
@@ -80,6 +95,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<ModelInfo> getModelInfo() async {
+    _assertAllowedHost(_base);
     final uri = Uri.parse('$_base${AppConstants.modelInfoEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
@@ -96,6 +112,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<ModelComparison>> getModelComparison() async {
+    _assertAllowedHost(_base);
     final uri = Uri.parse('$_base${AppConstants.modelComparisonEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);

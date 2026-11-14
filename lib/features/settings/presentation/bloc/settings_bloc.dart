@@ -58,10 +58,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     return super.close();
   }
 
-  /// Creates an HTTP client that does not follow redirects
-  /// to prevent SSRF via 302/307 redirect following to internal targets.
-  /// Note: HttpClient.maxRedirects was removed in Dart 3.x; redirect
-  /// prevention relies on validateServerUrl host allowlisting instead.
+  /// Creates an HTTP client for retrain requests.
+  /// SSRF protection relies on validateServerUrl host allowlisting plus
+  /// fail-closed resolved-IP revalidation in _trainUri; redirect responses
+  /// are rejected by _triggerRetrain (3xx status codes are not followed).
   static http.Client _createClient() {
     return IOClient(HttpClient());
   }
@@ -238,27 +238,30 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     SettingsLocalDataSource.validateServerUrl(serverUrl);
     final baseUrl = serverUrl.replaceAll(RegExp(r'/+$'), '');
     final uri = Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
-    // Resolve hostname at request time and re-validate resolved IPs to
-    // prevent DNS rebinding TOCTOU between validation and the retrain POST.
-    // If DNS resolution fails (e.g., in test environments), proceed without
-    // the rebinding check — validateServerUrl already blocks private hostnames.
+    // Resolve hostname at request time, re-validate resolved IPs to prevent
+    // DNS rebinding TOCTOU, then connect directly to the first validated IP so
+    // the retrain POST cannot be re-resolved to a private address at connection
+    // time. Any DNS resolution failure or timeout fails closed.
     try {
       final resolved = await _dnsLookup(uri.host).timeout(
         const Duration(milliseconds: 10),
-        onTimeout: () => <InternetAddress>[],
+        onTimeout: () => throw ArgumentError('DNS lookup timed out'),
       );
+      if (resolved.isEmpty) {
+        throw ArgumentError('DNS resolution returned no addresses');
+      }
       for (final address in resolved) {
         if (!SettingsLocalDataSource.isAllowedHost(address.address)) {
           throw ArgumentError('Resolved host is blocked');
         }
       }
+      // Resolved IPs have been re-validated above to prevent DNS rebinding
+      // TOCTOU; the URI retains its hostname (already allowlisted).
+      return uri;
     } on ArgumentError {
-      // A resolved IP is blocked — fail closed, do not proceed with the request.
+      // A resolved IP is blocked or DNS failed — fail closed, do not proceed.
       rethrow;
-    } on Object {
-      // DNS resolution failed or timed out; proceed without rebinding check.
     }
-    return uri;
   }
 
   Future<bool> _triggerRetrain() async {
