@@ -21,31 +21,37 @@ class ComparisonRemoteDataSource {
 
   String get baseUrl => baseUrlProvider?.call() ?? _baseUrl;
 
-  // Resolve DNS at request time and re-validate every resolved IP to
-  // prevent DNS rebinding TOCTOU for domain-name hosts.
-  Future<void> _resolveAndValidateHost(String host) async {
+  // Resolve DNS at request time, re-validate every resolved IP, and return
+  // the first validated IP to pin the connection (prevents DNS rebinding TOCTOU
+  // where validation passes on one IP but the client connects to another).
+  Future<String> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
-    if (resolved == null) {
-      final addresses = await InternetAddress.lookup(host);
-      if (addresses.isEmpty) {
-        throw ArgumentError('DNS resolution returned no addresses');
+    if (resolved != null) {
+      if (!isAllowedHost(resolved.address)) {
+        throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      for (final address in addresses) {
-        if (!isAllowedHost(address.address)) {
-          throw ArgumentError('Resolved host is blocked: SSRF protection');
-        }
+      return resolved.address;
+    }
+    final addresses = await InternetAddress.lookup(host);
+    if (addresses.isEmpty) {
+      throw ArgumentError('DNS resolution returned no addresses');
+    }
+    String? firstValidated;
+    for (final address in addresses) {
+      if (!isAllowedHost(address.address)) {
+        throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      return;
+      firstValidated ??= address.address;
     }
-    if (!isAllowedHost(resolved.address)) {
-      throw ArgumentError('Resolved host is blocked: SSRF protection');
-    }
+    return firstValidated!;
   }
 
   Future<ModelComparisonModel> fetchModelComparison() async {
     assertAllowedHost(baseUrl);
-    final uri = Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
-    await _resolveAndValidateHost(uri.host);
+    final baseUri =
+        Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
+    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final uri = baseUri.replace(host: resolvedHost);
     final response = await client.get(uri).timeout(AppConstants.apiTimeout);
 
     rejectRedirect(response);

@@ -27,32 +27,39 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   String get _base => baseUrlProvider?.call() ?? baseUrl;
 
-  // Resolve DNS at request time and re-validate every resolved IP to
-  // prevent DNS rebinding TOCTOU for domain-name hosts.
-  Future<void> _resolveAndValidateHost(String host) async {
+  // Resolve DNS at request time, re-validate every resolved IP, and return
+  // the first validated IP to pin the connection (prevents DNS rebinding TOCTOU
+  // where validation passes on one IP but the client connects to another).
+  Future<String> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
-    if (resolved == null) {
-      final addresses = await InternetAddress.lookup(host);
-      if (addresses.isEmpty) {
-        throw ArgumentError('DNS resolution returned no addresses');
+    if (resolved != null) {
+      if (!isAllowedHost(resolved.address)) {
+        throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      for (final address in addresses) {
-        if (!isAllowedHost(address.address)) {
-          throw ArgumentError('Resolved host is blocked: SSRF protection');
-        }
+      return resolved.address;
+    }
+    final addresses = await InternetAddress.lookup(host);
+    if (addresses.isEmpty) {
+      throw ArgumentError('DNS resolution returned no addresses');
+    }
+    String? firstValidated;
+    for (final address in addresses) {
+      if (!isAllowedHost(address.address)) {
+        throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      return;
+      firstValidated ??= address.address;
     }
-    if (!isAllowedHost(resolved.address)) {
-      throw ArgumentError('Resolved host is blocked: SSRF protection');
-    }
+    return firstValidated!;
   }
 
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
     assertAllowedHost(_base);
-    await _resolveAndValidateHost(Uri.parse(_base).host);
-    final uri = Uri.parse('$_base${AppConstants.predictEndpoint}');
+    final baseUri = Uri.parse(_base);
+    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final uri = baseUri.replace(
+        host: resolvedHost,
+        path: '${baseUri.path}${AppConstants.predictEndpoint}');
     final body = jsonEncode(features.toJson());
 
     final response = await _client
@@ -79,8 +86,11 @@ class PredictionRemoteDataSource implements PredictionRepository {
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
     assertAllowedHost(_base);
-    await _resolveAndValidateHost(Uri.parse(_base).host);
-    final uri = Uri.parse('$_base${AppConstants.predictBatchEndpoint}');
+    final baseUri = Uri.parse(_base);
+    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final uri = baseUri.replace(
+        host: resolvedHost,
+        path: '${baseUri.path}${AppConstants.predictBatchEndpoint}');
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
     });
@@ -112,8 +122,11 @@ class PredictionRemoteDataSource implements PredictionRepository {
   @override
   Future<ModelInfo> getModelInfo() async {
     assertAllowedHost(_base);
-    await _resolveAndValidateHost(Uri.parse(_base).host);
-    final uri = Uri.parse('$_base${AppConstants.modelInfoEndpoint}');
+    final baseUri = Uri.parse(_base);
+    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final uri = baseUri.replace(
+        host: resolvedHost,
+        path: '${baseUri.path}${AppConstants.modelInfoEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 
@@ -131,8 +144,11 @@ class PredictionRemoteDataSource implements PredictionRepository {
   @override
   Future<List<ModelComparison>> getModelComparison() async {
     assertAllowedHost(_base);
-    await _resolveAndValidateHost(Uri.parse(_base).host);
-    final uri = Uri.parse('$_base${AppConstants.modelComparisonEndpoint}');
+    final baseUri = Uri.parse(_base);
+    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final uri = baseUri.replace(
+        host: resolvedHost,
+        path: '${baseUri.path}${AppConstants.modelComparisonEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 

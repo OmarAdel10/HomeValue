@@ -94,13 +94,42 @@ bool isAllowedHost(String host) {
         bytes[7] == 0xff) {
       return false;
     }
+    // Block IPv6 transition forms embedding a blocked IPv4: 6to4
+    // (2002::/16, embedded IPv4 in bytes 8-11) and RFC 6052
+    // (64:ff9b::/96, embedded IPv4 in bytes 12-15). Documentation range
+    // 2001:db8::/32 is not a transition form and is allowed.
+    if (bytes.length == 16) {
+      final is6to4 = bytes[0] == 0x20 && bytes[1] == 0x02;
+      final isRfc6052 =
+          bytes[0] == 0x64 && bytes[1] == 0xff && bytes[2] == 0x9b;
+      if (is6to4 || isRfc6052) {
+        final embeddedHigh =
+            '${bytes[8]}.${bytes[9]}.${bytes[10]}.${bytes[11]}';
+        final embeddedLow =
+            '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
+        if (_ipv4InBlockedRange(embeddedHigh) ||
+            _ipv4InBlockedRange(embeddedLow)) {
+          return false;
+        }
+      }
+    }
     return true;
   }
 
-  // IPv4: reject leading-zero octets, then check blocked CIDR ranges.
+  // IPv4: enforce strict dotted-decimal notation (4 octets, 0-255 each,
+  // no leading zeros, no hex/integer notation) to block alternative IPv4
+  // notations that bypass CIDR matching (e.g. 2130706433, 0x7f000001).
   final parts = stripped.split('.');
-  if (parts.any((p) => p.length > 1 && p.startsWith('0'))) {
-    return false; // leading-zero octet (octal ambiguity): blocked
+  if (parts.length != 4) {
+    return false; // Not strict dotted-decimal IPv4
+  }
+  for (final p in parts) {
+    if (p.isEmpty ||
+        p.length > 1 && p.startsWith('0') ||
+        !RegExp(r'^\d+$').hasMatch(p) ||
+        int.tryParse(p)! > 255) {
+      return false; // Non-strict octet: blocked
+    }
   }
   if (!_ipv4InBlockedRange(stripped)) {
     return true;
@@ -121,7 +150,12 @@ bool _ipv4InBlockedRange(String ip) {
     final netParts = cidr.$1.split('.').map(int.parse);
     final netInt = netParts.fold(0, (a, b) => (a << 8) | b);
     final prefix = cidr.$2;
-    final mask = prefix == 0 ? 0 : (~(0xFFFFFFFF >> prefix)) & 0xFFFFFFFF;
+    // /0 would match every IPv4 address — treat as match-nothing so no
+    // future /0 entry can open a fail-open SSRF path.
+    if (prefix == 0) {
+      continue;
+    }
+    final mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
     if ((ipInt & mask) == (netInt & mask)) {
       return true;
     }
@@ -134,6 +168,14 @@ bool _ipv4InBlockedRange(String ip) {
 void validateServerUrl(String serverUrl) {
   final uri = Uri.tryParse(serverUrl.trim());
   if (uri == null || !uri.hasAuthority) {
+    throw ArgumentError('Invalid server URL');
+  }
+  // Reject empty host (e.g. http://:8000/).
+  if (uri.host.isEmpty) {
+    throw ArgumentError('Invalid server URL');
+  }
+  // Reject hosts containing whitespace or control characters.
+  if (uri.host.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {
     throw ArgumentError('Invalid server URL');
   }
   // Reject embedded credentials (userInfo) to prevent SSRF via user@host.
@@ -154,6 +196,10 @@ void validateServerUrl(String serverUrl) {
 void assertAllowedHost(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null || !uri.hasAuthority) {
+    throw ArgumentError('Invalid URL');
+  }
+  // Reject embedded credentials (userInfo) to prevent SSRF via user@host.
+  if (uri.userInfo.isNotEmpty) {
     throw ArgumentError('Invalid URL');
   }
   if (!isAllowedHost(uri.host)) {

@@ -19,7 +19,8 @@ enum _RetrainOutcome {
   performed, // retrain attempt succeeded
   failed, // retrain attempt was made but failed
   skippedClosed, // bloc is closed, no attempt
-  skippedInFlight, // already in flight or not due, no attempt
+  skippedInFlight, // already in flight, no attempt
+  skippedNotDue, // retrain window not yet elapsed, no attempt
   skippedBlocked, // server URL blocked by SSRF rules, retraining fail-closed
 }
 
@@ -284,13 +285,16 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
       if (!settings.autoRetrain || !_isRetrainDue(settings)) {
-        return _RetrainOutcome.skippedInFlight;
+        return _RetrainOutcome.skippedNotDue;
       }
       attemptStarted = true;
+      uri = await _trainUri(settings.serverUrl);
+      // Re-check serverUrlBlocked immediately before POST to close the
+      // TOCTOU race where the URL could be unblocked between check and request.
       if (repository.serverUrlBlocked) {
+        log('Auto-retrain skipped: server URL blocked by SSRF rules');
         return _RetrainOutcome.skippedBlocked;
       }
-      uri = await _trainUri(settings.serverUrl);
       final response = await _httpClient.post(uri, headers: {
         'Content-Type': 'application/json'
       }).timeout(AppConstants.apiTimeout);
@@ -301,6 +305,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings ??= settings;
       _consecutiveRetrainFailures = 0;
       return _RetrainOutcome.performed;
+    } on ArgumentError catch (e) {
+      // Blocked resolved IP or DNS failure — fail-closed without consuming
+      // the consecutive failure cap (SSRF block is not a retrain failure).
+      log('Auto-retrain blocked: ${e.runtimeType}');
+      return _RetrainOutcome.skippedBlocked;
     } catch (e) {
       log('Auto-retrain failed');
       _consecutiveRetrainFailures++;
