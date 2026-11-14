@@ -22,30 +22,16 @@ class PredictionRemoteDataSource implements PredictionRepository {
     this.baseUrlProvider,
     http.Client? client,
   }) : _client = client ?? http.Client() {
-    _assertAllowedHost(baseUrl);
+    assertAllowedHost(baseUrl);
   }
 
   String get _base => baseUrlProvider?.call() ?? baseUrl;
 
-  void _assertAllowedHost(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasAuthority) {
-      throw ArgumentError('Invalid base URL');
-    }
-    if (!isAllowedHost(uri.host)) {
-      throw ArgumentError('Blocked host: SSRF protection');
-    }
-    // Resolve DNS at request time and re-validate every resolved IP to
-    // prevent DNS rebinding TOCTOU for domain-name hosts (e.g. a public
-    // domain that resolves to 127.0.0.1 at connect time).
-    _resolveAndValidateHost(uri.host);
-  }
-
+  // Resolve DNS at request time and re-validate every resolved IP to
+  // prevent DNS rebinding TOCTOU for domain-name hosts.
   Future<void> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
     if (resolved == null) {
-      // Domain name: resolve at request time and fail-closed if any resolved
-      // address is private/link-local/metadata.
       final addresses = await InternetAddress.lookup(host);
       if (addresses.isEmpty) {
         throw ArgumentError('DNS resolution returned no addresses');
@@ -62,17 +48,10 @@ class PredictionRemoteDataSource implements PredictionRepository {
     }
   }
 
-  // Rejects 3xx redirect responses before body handling to prevent SSRF via
-  void _rejectRedirect(http.Response response) {
-    if (response.statusCode >= 300 && response.statusCode < 400) {
-      throw http.ClientException(
-          'Redirect not followed', response.request?.url);
-    }
-  }
-
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
-    _assertAllowedHost(_base);
+    assertAllowedHost(_base);
+    await _resolveAndValidateHost(Uri.parse(_base).host);
     final uri = Uri.parse('$_base${AppConstants.predictEndpoint}');
     final body = jsonEncode(features.toJson());
 
@@ -84,7 +63,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
         )
         .timeout(timeout);
 
-    _rejectRedirect(response);
+    rejectRedirect(response);
     if (response.statusCode == 200) {
       return PredictionResult.fromJson(jsonDecode(response.body));
     } else if (response.statusCode == 503) {
@@ -99,7 +78,8 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
-    _assertAllowedHost(_base);
+    assertAllowedHost(_base);
+    await _resolveAndValidateHost(Uri.parse(_base).host);
     final uri = Uri.parse('$_base${AppConstants.predictBatchEndpoint}');
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
@@ -113,7 +93,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
         )
         .timeout(timeout);
 
-    _rejectRedirect(response);
+    rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return (data['predictions'] as List)
@@ -131,12 +111,13 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<ModelInfo> getModelInfo() async {
-    _assertAllowedHost(_base);
+    assertAllowedHost(_base);
+    await _resolveAndValidateHost(Uri.parse(_base).host);
     final uri = Uri.parse('$_base${AppConstants.modelInfoEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 
-    _rejectRedirect(response);
+    rejectRedirect(response);
     if (response.statusCode == 200) {
       return ModelInfo.fromJson(jsonDecode(response.body));
     } else {
@@ -149,12 +130,13 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<ModelComparison>> getModelComparison() async {
-    _assertAllowedHost(_base);
+    assertAllowedHost(_base);
+    await _resolveAndValidateHost(Uri.parse(_base).host);
     final uri = Uri.parse('$_base${AppConstants.modelComparisonEndpoint}');
 
     final response = await _client.get(uri).timeout(timeout);
 
-    _rejectRedirect(response);
+    rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final models = (data['models'] as List)

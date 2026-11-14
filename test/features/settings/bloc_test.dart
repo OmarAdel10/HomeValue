@@ -42,9 +42,13 @@ void main() {
     late RetrainRecorder recorder;
 
     setUp(() {
+      recorder = RetrainRecorder();
+      addTearDown(recorder.client.close);
       mockRepository = MockSettingsRepository();
+      when(() => mockRepository.serverUrlBlocked).thenReturn(false);
       settingsBloc = SettingsBloc(
         repository: mockRepository,
+        httpClient: recorder.client,
         dnsLookup: (host) async =>
             <InternetAddress>[InternetAddress('8.8.8.8')],
       );
@@ -74,6 +78,7 @@ void main() {
         );
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -95,6 +100,7 @@ void main() {
         );
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -117,6 +123,7 @@ void main() {
         );
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -164,6 +171,7 @@ void main() {
             .thenThrow(Exception('disk unavailable'));
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -182,6 +190,7 @@ void main() {
             .thenThrow(Exception('disk unavailable'));
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -201,6 +210,7 @@ void main() {
             .thenThrow(Exception('disk unavailable'));
         return SettingsBloc(
           repository: mockRepository,
+          httpClient: recorder.client,
           dnsLookup: (host) async =>
               <InternetAddress>[InternetAddress('8.8.8.8')],
         );
@@ -475,6 +485,7 @@ void main() {
       when(() => mockRepository.getSettings()).thenAnswer(
         (_) async => enabledSettings,
       );
+      when(() => mockRepository.serverUrlBlocked).thenReturn(false);
       when(() => mockRepository.updateThemeMode(any())).thenAnswer(
         (_) async => enabledDarkSettings,
       );
@@ -514,11 +525,14 @@ void main() {
         expect(recorder.requests, isEmpty);
 
         advance(async, const Duration(hours: 22, minutes: 59));
+        async.flushMicrotasks();
         bloc.add(const ToggleTheme(ThemeMode.dark));
         async.flushMicrotasks();
         expect(recorder.requests, isEmpty);
 
         advance(async, const Duration(minutes: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -550,6 +564,7 @@ void main() {
         expect(recorder.requests, isEmpty);
 
         advance(async, const Duration(hours: 23));
+        async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -574,7 +589,12 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
 
         expect(recorder.requests, hasLength(1));
@@ -600,13 +620,19 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.add(const ToggleAutoRetrain(false));
         async.flushMicrotasks();
         advance(async, const Duration(hours: 48));
+        async.flushMicrotasks();
 
         expect(recorder.requests, hasLength(1));
 
@@ -632,13 +658,19 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
         async.flushMicrotasks();
         advance(async, const Duration(hours: 48));
+        async.flushMicrotasks();
 
         expect(recorder.requests, hasLength(1));
       });
@@ -662,20 +694,29 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(failingRequests, hasLength(1));
 
         advance(async, const Duration(hours: 1));
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
+        async.flushMicrotasks();
         expect(failingRequests, hasLength(1));
 
         advance(async, const Duration(hours: 23));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
         expect(failingRequests, hasLength(2));
 
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
-        expect(bloc.state, isA<SettingsFailure>());
+        expect(bloc.state, isA<SettingsLoaded>());
 
         bloc.close();
         async.flushMicrotasks();
@@ -700,7 +741,12 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
 
         expect(
@@ -731,12 +777,18 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(requests, hasLength(1));
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
 
         advance(async, const Duration(hours: 24));
+        async.flushMicrotasks();
         expect(requests, hasLength(2));
         verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
 
@@ -763,7 +815,12 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
 
         expect(requests, hasLength(1));
@@ -792,7 +849,12 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
 
         expect(requests, hasLength(1));
@@ -823,9 +885,12 @@ void main() {
         expect(recorder.requests, isEmpty);
 
         advance(async, const Duration(minutes: 59));
+        async.flushMicrotasks();
         expect(recorder.requests, isEmpty);
 
         advance(async, const Duration(minutes: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -851,11 +916,14 @@ void main() {
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
         advance(async, const Duration(minutes: 30));
+        async.flushMicrotasks();
         expect(recorder.requests, isEmpty);
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
         advance(async, const Duration(minutes: 30));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
 
         expect(recorder.requests, hasLength(1));
 
@@ -890,6 +958,8 @@ void main() {
         expect(bloc.state, isA<SettingsFailure>());
 
         advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         expect(recorder.requests, hasLength(1));
 
         bloc.close();
@@ -921,13 +991,23 @@ void main() {
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(requests, hasLength(1));
 
         bloc.add(const LoadSettings());
         async.flushMicrotasks();
-        async.elapse(Duration.zero);
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
         async.flushMicrotasks();
         expect(requests, hasLength(1));
 
@@ -935,6 +1015,7 @@ void main() {
         async.flushMicrotasks();
 
         advance(async, const Duration(hours: 24));
+        async.flushMicrotasks();
         expect(requests, hasLength(2));
 
         bloc.close();

@@ -32,4 +32,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
   Future<AppSettings> updateLastAutoRetrain(DateTime at) async {
     return localDataSource.updateLastAutoRetrain(at);
   }
+
+  @override
+  bool get serverUrlBlocked => localDataSource.serverUrlBlocked;
 }

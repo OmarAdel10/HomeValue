@@ -16,24 +16,13 @@ class ComparisonRemoteDataSource {
     required String baseUrl,
     this.baseUrlProvider,
   }) : _baseUrl = baseUrl {
-    _assertAllowedHost(baseUrl);
+    assertAllowedHost(baseUrl);
   }
 
   String get baseUrl => baseUrlProvider?.call() ?? _baseUrl;
 
-  void _assertAllowedHost(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasAuthority) {
-      throw ArgumentError('Invalid base URL');
-    }
-    if (!isAllowedHost(uri.host)) {
-      throw ArgumentError('Blocked host: SSRF protection');
-    }
-    // Resolve DNS at request time and re-validate every resolved IP to
-    // prevent DNS rebinding TOCTOU for domain-name hosts.
-    _resolveAndValidateHost(uri.host);
-  }
-
+  // Resolve DNS at request time and re-validate every resolved IP to
+  // prevent DNS rebinding TOCTOU for domain-name hosts.
   Future<void> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
     if (resolved == null) {
@@ -53,19 +42,13 @@ class ComparisonRemoteDataSource {
     }
   }
 
-  void _rejectRedirect(http.Response response) {
-    if (response.statusCode >= 300 && response.statusCode < 400) {
-      throw http.ClientException(
-          'Redirect not followed', response.request?.url);
-    }
-  }
-
   Future<ModelComparisonModel> fetchModelComparison() async {
-    _assertAllowedHost(baseUrl);
+    assertAllowedHost(baseUrl);
     final uri = Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
+    await _resolveAndValidateHost(uri.host);
     final response = await client.get(uri).timeout(AppConstants.apiTimeout);
 
-    _rejectRedirect(response);
+    rejectRedirect(response);
     if (response.statusCode == 200) {
       return ModelComparisonModel.fromJson(response.body);
     } else {

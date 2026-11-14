@@ -7,4 +7,5 @@ abstract class SettingsRepository {
   Future<AppSettings> updateThemeMode(ThemeMode themeMode);
   Future<AppSettings> updateAutoRetrain(bool autoRetrain);
   Future<AppSettings> updateLastAutoRetrain(DateTime at);
+  bool get serverUrlBlocked;
 }

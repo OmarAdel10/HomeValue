@@ -29,15 +29,28 @@ class SettingsLocalDataSource {
   /// Synchronous read used by the HTTP layer before each request.
   String get serverUrl => _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
 
+  /// Whether the currently configured server URL is blocked by SSRF rules.
+  /// When true, retraining must not proceed even if auto-retrain is enabled.
+  bool get serverUrlBlocked {
+    final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
+    try {
+      validateServerUrl(serverUrl);
+      return false;
+    } on Object {
+      return true;
+    }
+  }
+
   Future<AppSettings> getSettings() async {
     final serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
     // Validate the effective URL (including defaults) at startup so a blocked
     // default cannot silently enable self-SSRF. A blocked default is tolerated
-    // at load but retraining is rejected by _trainUri.
+    // at load; retraining fails closed on each attempt (checked via
+    // serverUrlBlocked).
     try {
       validateServerUrl(serverUrl);
-    } on Object {
-      log('Blocked server URL at load; retraining disabled');
+    } on ArgumentError {
+      log('Blocked server URL at load; retraining will fail closed');
     }
     final themeModeIndex = _prefs.getInt(_themeModeKey) ?? _defaultThemeMode;
     final autoRetrain = _prefs.getBool(_autoRetrainKey) ?? _defaultAutoRetrain;

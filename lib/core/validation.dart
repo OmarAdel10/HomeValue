@@ -7,6 +7,8 @@ library;
 
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
 /// IPv4 private/reserved ranges blocked from being used as a server URL
 /// (SSRF mitigation): loopback, link-local, RFC 1918, CGN, TEST-NET,
 /// documentation, multicast, and reserved ranges.
@@ -144,5 +146,25 @@ void validateServerUrl(String serverUrl) {
   }
   if (!isAllowedHost(uri.host)) {
     throw ArgumentError('Blocked host');
+  }
+}
+
+/// Asserts that [url]'s host is allowed (not private/link-local/metadata).
+/// Throws ArgumentError if blocked — fail-closed for SSRF mitigation.
+void assertAllowedHost(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.hasAuthority) {
+    throw ArgumentError('Invalid URL');
+  }
+  if (!isAllowedHost(uri.host)) {
+    throw ArgumentError('Blocked host: SSRF protection');
+  }
+}
+
+/// Rejects a redirect response to prevent redirect-based SSRF.
+/// Throws [http.ClientException] for 3xx status codes.
+void rejectRedirect(http.Response response) {
+  if (response.statusCode >= 300 && response.statusCode < 400) {
+    throw http.ClientException('Redirect not followed', response.request?.url);
   }
 }

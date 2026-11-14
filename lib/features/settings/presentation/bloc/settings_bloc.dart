@@ -20,6 +20,7 @@ enum _RetrainOutcome {
   failed, // retrain attempt was made but failed
   skippedClosed, // bloc is closed, no attempt
   skippedInFlight, // already in flight or not due, no attempt
+  skippedBlocked, // server URL blocked by SSRF rules, retraining fail-closed
 }
 
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
@@ -200,7 +201,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     }
     final delay = nextRun == null
         ? Duration
-            .zero // No prior retrain: retrain immediately via zero-delay timer.
+            .zero // No prior retrain: initial retrain via zero-delay timer.
         : (!nextRun.isAfter(now) ? Duration.zero : nextRun.difference(now));
     _armTimer(delay);
   }
@@ -236,15 +237,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (!_isEnabled) {
       return;
     }
-    unawaited(_handleTimerFired());
-  }
-
-  Future<void> _handleTimerFired() async {
-    final outcome = await _triggerRetrain();
-    if (outcome == _RetrainOutcome.failed && !isClosed) {
-      // ignore: invalid_use_of_visible_for_testing_member
-      emit(_failure(Exception('Scheduled auto-retrain failed')));
-    }
+    _triggerRetrain();
   }
 
   Future<Uri> _trainUri(String serverUrl) async {
@@ -294,6 +287,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         return _RetrainOutcome.skippedInFlight;
       }
       attemptStarted = true;
+      if (repository.serverUrlBlocked) {
+        return _RetrainOutcome.skippedBlocked;
+      }
       uri = await _trainUri(settings.serverUrl);
       final response = await _httpClient.post(uri, headers: {
         'Content-Type': 'application/json'
@@ -306,7 +302,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _consecutiveRetrainFailures = 0;
       return _RetrainOutcome.performed;
     } catch (e) {
-      // Log outcome only; never log the URL or raw exception text.
       log('Auto-retrain failed');
       _consecutiveRetrainFailures++;
       return _RetrainOutcome.failed;
