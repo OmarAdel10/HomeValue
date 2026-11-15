@@ -89,6 +89,9 @@ bool isAllowedHost(String host) {
     if (bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc) {
       return false; // fc00::/7 unique-local
     }
+    if (bytes.length == 16 && bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) {
+      return false; // fec0::/10 deprecated site-local
+    }
     // Block ALL IPv4-compatible IPv6 (::a.b.c.d, including ::127.0.0.1)
     // regardless of the embedded IPv4 address (RFC 4291 deprecated format).
     if (bytes.length == 16 &&
@@ -105,38 +108,37 @@ bool isAllowedHost(String host) {
       return false; // IPv4-compatible IPv6 ::a.b.c.d (incl ::127.0.0.1)
     }
     // Defense-in-depth: explicit IPv4-mapped IPv6 ::ffff:a.b.c.d check
-    // (already covered by ::a.b.c.d rule above, but made explicit for clarity).
-    if (bytes.length == 16 &&
-        bytes[0] == 0 &&
-        bytes[1] == 0 &&
-        bytes[2] == 0 &&
-        bytes[3] == 0 &&
-        bytes[4] == 0 &&
-        bytes[5] == 0 &&
-        bytes[6] == 0xff &&
-        bytes[7] == 0xff) {
+    // (bytes 10-11 are the 0xffff selector; already covered by the ::a.b.c.d
+    // rule above, but made explicit for clarity).
+    if (bytes.length == 16 && bytes[10] == 0xff && bytes[11] == 0xff) {
       return false;
     }
     // Block IPv6 transition forms embedding a blocked IPv4: 6to4
-    // (2002::/16, embedded IPv4 in bytes 8-11) and RFC 6052
-    // (64:ff9b::/96, embedded IPv4 in bytes 12-15). Documentation range
-    // 2001:db8::/32 is not a transition form and is allowed.
+    // (2002::/16, embedded IPv4 in bytes 2-5), RFC 6052
+    // (64:ff9b::/96, embedded IPv4 in bytes 12-15), SIIT
+    // (0:ffff:0:0/96, selector bytes 8-9 = 0xffff, embedded IPv4 in bytes
+    // 12-15) and ISATAP (interface-ID marker 00:00:5e:fe at bytes 4-7,
+    // embedded IPv4 in bytes 8-11). Documentation range 2001:db8::/32 is not
+    // a transition form and is allowed.
     if (bytes.length == 16) {
+      String? embedded;
       final is6to4 = bytes[0] == 0x20 && bytes[1] == 0x02;
       final isRfc6052 =
           bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b;
-      if (is6to4 || isRfc6052) {
-        String embedded;
-        if (is6to4) {
-          // 6to4: 2002:IPv4::/48, embedded IPv4 in bytes 2-5.
-          embedded = '${bytes[2]}.${bytes[3]}.${bytes[4]}.${bytes[5]}';
-        } else {
-          // RFC 6052: 64:ff9b::/96, embedded IPv4 in bytes 12-15.
-          embedded = '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
-        }
-        if (_ipv4InBlockedRange(embedded)) {
-          return false;
-        }
+      final isSiit = bytes[8] == 0xff && bytes[9] == 0xff;
+      // ISATAP interface identifier 0200:5efe occupies bytes 8-11; the
+      // 5efe marker tail lands on bytes 10-11 and the embedded IPv4 on
+      // bytes 12-15 (verified via InternetAddress raw bytes).
+      final isIsatap = bytes[10] == 0x5e && bytes[11] == 0xfe;
+      if (is6to4) {
+        // 6to4: 2002:IPv4::/48, embedded IPv4 in bytes 2-5.
+        embedded = '${bytes[2]}.${bytes[3]}.${bytes[4]}.${bytes[5]}';
+      } else if (isRfc6052 || isSiit || isIsatap) {
+        // RFC 6052 / SIIT / ISATAP: embedded IPv4 in bytes 12-15.
+        embedded = '${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}';
+      }
+      if (embedded != null && _ipv4InBlockedRange(embedded)) {
+        return false;
       }
     }
     return true;

@@ -2,7 +2,7 @@ name: advanced-machine-learning CI
 
 on:
   push:
-    branches: [development, master, fix/auto-retrain-loop]
+    branches: [development, master]
   pull_request:
     branches: [development, master]
 

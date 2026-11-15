@@ -41,8 +41,10 @@ Future<void> initDependencies() async {
   // Data sources - Comparison
   sl.registerLazySingleton<ComparisonRemoteDataSource>(
     () => ComparisonRemoteDataSource(
-      client: IOClient(
-          HttpClient()), // IOClient does NOT follow redirects (defense-in-depth against redirect-based SSRF)
+      // package:http follows 3xx by default; redirect rejection happens
+      // per-request (followRedirects=false + rejectRedirect) inside the
+      // datasource, not at the client level.
+      client: IOClient(HttpClient()),
       baseUrl: AppConstants.apiBaseUrl,
       baseUrlProvider: () => sl<SettingsLocalDataSource>().serverUrl,
     ),

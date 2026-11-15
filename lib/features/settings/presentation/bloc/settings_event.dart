@@ -38,3 +38,15 @@ class ToggleAutoRetrain extends SettingsEvent {
   @override
   List<Object?> get props => [autoRetrain];
 }
+
+/// Internal event: emitted by the bloc itself when consecutive retrain
+/// failures reach the cap and scheduling is suspended. Surfaces the
+/// suspension to the UI instead of failing silently.
+class RetrainSuspended extends SettingsEvent {
+  final int consecutiveFailures;
+
+  const RetrainSuspended(this.consecutiveFailures);
+
+  @override
+  List<Object?> get props => [consecutiveFailures];
+}

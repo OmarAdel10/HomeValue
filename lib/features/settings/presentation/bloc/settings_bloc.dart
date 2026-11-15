@@ -61,6 +61,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     on<UpdateServerUrl>(_onUpdateServerUrl);
     on<ToggleTheme>(_onToggleTheme);
     on<ToggleAutoRetrain>(_onToggleAutoRetrain);
+    on<RetrainSuspended>(_onRetrainSuspended);
   }
 
   @override
@@ -103,6 +104,11 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     try {
       final settings = await repository.updateServerUrl(event.serverUrl);
+      // A URL change invalidates any in-flight retrain that resolved DNS
+      // against the old host and clears the consecutive-failure suspension
+      // accumulated against the old target.
+      _retrainGeneration++;
+      _consecutiveRetrainFailures = 0;
       _lastKnownSettings = settings;
       _failureCount = 0;
       emit(SettingsLoaded(settings));
@@ -273,10 +279,18 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     if (!isAllowedHost(uri.host)) {
       throw ArgumentError('Blocked host');
     }
-    // Build the retrain URI: strip trailing slashes from server URL, append
-    // the train endpoint path, then pin to the resolved IP.
-    final baseUrl = serverUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    final trainUri = Uri.parse('$baseUrl${AppConstants.trainEndpoint}');
+    // Build the retrain URI: parse once, strip query/fragment and trailing
+    // path slashes, then append the train endpoint path. String concatenation
+    // would push the endpoint into the query string for URLs like
+    // 'http://host:8000?x=1' (POST lands on '/' and the retrain silently
+    // fails every window).
+    final baseUri = Uri.parse(serverUrl.trim());
+    final basePath = baseUri.path.replaceAll(RegExp(r'/+$'), '');
+    final trainUri = baseUri.replace(
+      path: '$basePath${AppConstants.trainEndpoint}',
+      query: null,
+      fragment: null,
+    );
     // Resolve hostname at request time via stubbable _dnsLookup, re-validate
     // resolved IPs to prevent DNS rebinding TOCTOU, then connect directly to
     // the first validated IP so the retrain POST cannot be re-resolved to a
@@ -312,7 +326,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       }
       // http: connect directly to the first validated IP so the HTTP client
       // does not re-resolve the hostname at connect time (DNS rebinding TOCTOU).
-      return trainUri.replace(host: validated.first.address);
+      // Zone IDs (%eth0) are stripped — Uri rejects them in the host component.
+      return trainUri.replace(
+        host: validated.first.address.split('%').first,
+      );
     } on SocketException {
       // DNS failure must fail closed as ArgumentError so callers classify it
       // as skipped (not a retrain failure) — see _triggerRetrain.
@@ -402,8 +419,27 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         if (_isEnabled &&
             _consecutiveRetrainFailures < _maxConsecutiveRetrainFailures) {
           _scheduleNextRetrain();
+        } else if (_isEnabled &&
+            outcome == _RetrainOutcome.failed &&
+            _consecutiveRetrainFailures >= _maxConsecutiveRetrainFailures) {
+          // Suspension must be visible: surface it through the normal event
+          // pipeline instead of failing silently (fire-and-forget caller
+          // cannot emit directly outside a handler).
+          add(RetrainSuspended(_consecutiveRetrainFailures));
         }
       }
     }
+  }
+
+  void _onRetrainSuspended(
+    RetrainSuspended event,
+    Emitter<SettingsState> emit,
+  ) {
+    emit(
+      SettingsFailure(
+        'Auto-retrain suspended after ${event.consecutiveFailures} '
+        'consecutive failures',
+      ),
+    );
   }
 }

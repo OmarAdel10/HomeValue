@@ -41,10 +41,17 @@ class PredictionRemoteDataSource implements PredictionRepository {
       }
       return resolved.address.split('%').first;
     }
-    final addresses = await validation.dnsLookup(host).timeout(
-          timeout,
-          onTimeout: () => throw ArgumentError('DNS lookup timed out'),
-        );
+    final List<InternetAddress> addresses;
+    try {
+      addresses = await validation.dnsLookup(host).timeout(
+            timeout,
+            onTimeout: () => throw ArgumentError('DNS lookup timed out'),
+          );
+    } on SocketException {
+      // DNS transport failure must fail closed as ArgumentError so callers
+      // classify it as a blocked request (not a transport failure).
+      throw ArgumentError('DNS lookup failed');
+    }
     if (addresses.isEmpty) {
       throw ArgumentError('DNS resolution returned no addresses');
     }
@@ -94,8 +101,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
-    validation.assertAllowedHost(_base);
-    final baseUri = Uri.parse(_base);
+    final base = _base;
+    validation.assertAllowedHost(base);
+    final baseUri = Uri.parse(base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
         _endpointPath(baseUri, AppConstants.predictEndpoint));
@@ -122,8 +130,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
-    validation.assertAllowedHost(_base);
-    final baseUri = Uri.parse(_base);
+    final base = _base;
+    validation.assertAllowedHost(base);
+    final baseUri = Uri.parse(base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
         _endpointPath(baseUri, AppConstants.predictBatchEndpoint));
@@ -155,8 +164,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<ModelInfo> getModelInfo() async {
-    validation.assertAllowedHost(_base);
-    final baseUri = Uri.parse(_base);
+    final base = _base;
+    validation.assertAllowedHost(base);
+    final baseUri = Uri.parse(base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
         _endpointPath(baseUri, AppConstants.modelInfoEndpoint));
@@ -177,8 +187,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<ModelComparison>> getModelComparison() async {
-    validation.assertAllowedHost(_base);
-    final baseUri = Uri.parse(_base);
+    final base = _base;
+    validation.assertAllowedHost(base);
+    final baseUri = Uri.parse(base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
         _endpointPath(baseUri, AppConstants.modelComparisonEndpoint));

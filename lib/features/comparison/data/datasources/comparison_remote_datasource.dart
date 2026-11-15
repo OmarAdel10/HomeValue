@@ -11,14 +11,17 @@ class ComparisonRemoteDataSource {
   final http.Client _client;
   final bool _ownsClient;
   final String _baseUrl;
+  final Duration _timeout;
   final String Function()? baseUrlProvider;
 
   ComparisonRemoteDataSource({
     http.Client? client,
     required String baseUrl,
     this.baseUrlProvider,
+    Duration? timeout,
   })  : _client = client ?? IOClient(HttpClient()),
         _ownsClient = client == null,
+        _timeout = timeout ?? AppConstants.apiTimeout,
         _baseUrl = baseUrl {
     validation.assertAllowedHost(baseUrl);
   }
@@ -44,10 +47,17 @@ class ComparisonRemoteDataSource {
       }
       return resolved.address.split('%').first;
     }
-    final addresses = await validation.dnsLookup(host).timeout(
-          AppConstants.apiTimeout,
-          onTimeout: () => throw ArgumentError('DNS lookup timed out'),
-        );
+    final List<InternetAddress> addresses;
+    try {
+      addresses = await validation.dnsLookup(host).timeout(
+            _timeout,
+            onTimeout: () => throw ArgumentError('DNS lookup timed out'),
+          );
+    } on SocketException {
+      // DNS transport failure must fail closed as ArgumentError so callers
+      // classify it as a blocked retrain (not a transport failure).
+      throw ArgumentError('DNS lookup failed');
+    }
     if (addresses.isEmpty) {
       throw ArgumentError('DNS resolution returned no addresses');
     }
@@ -89,7 +99,7 @@ class ComparisonRemoteDataSource {
     final response = await _client
         .send(request)
         .then(http.Response.fromStream)
-        .timeout(AppConstants.apiTimeout);
+        .timeout(_timeout);
 
     validation.rejectRedirect(response);
     if (response.statusCode == 200) {

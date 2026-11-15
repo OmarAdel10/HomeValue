@@ -24,7 +24,21 @@ class SettingsLocalDataSource {
 
   final SharedPreferences _prefs;
 
+  /// URL whose validation (including DNS resolution) already succeeded, so
+  /// repeated getSettings() reads do not re-run live DNS on every call.
+  /// Invalidated whenever a different URL is persisted.
+  String? _lastValidatedUrl;
+
   SettingsLocalDataSource(this._prefs);
+
+  /// Validates [serverUrl] unless an identical URL already passed validation.
+  Future<void> _validateCached(String serverUrl) async {
+    if (_lastValidatedUrl == serverUrl) {
+      return;
+    }
+    await validateServerUrl(serverUrl);
+    _lastValidatedUrl = serverUrl;
+  }
 
   /// Synchronous read used by the HTTP layer before each request.
   String get serverUrl => _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
@@ -50,7 +64,7 @@ class SettingsLocalDataSource {
     // at load; retraining fails closed on each attempt (checked via
     // serverUrlBlocked).
     try {
-      await validateServerUrl(serverUrl);
+      await _validateCached(serverUrl);
     } on ArgumentError {
       log('Blocked server URL at load; retraining will fail closed');
     } on Exception catch (e) {
@@ -89,6 +103,9 @@ class SettingsLocalDataSource {
   Future<AppSettings> updateServerUrl(String serverUrl) async {
     final trimmed = serverUrl.trim();
     await validateServerUrl(trimmed);
+    // Validation just succeeded for this exact URL — seed the cache so the
+    // follow-up getSettings() read (and future loads) skip redundant DNS.
+    _lastValidatedUrl = trimmed;
     await _prefs.setString(_serverUrlKey, trimmed);
     return getSettings();
   }
