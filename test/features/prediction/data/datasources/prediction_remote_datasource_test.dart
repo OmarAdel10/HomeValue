@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,10 +11,20 @@ import 'package:home_value/features/prediction/domain/entities/house_features.da
 import 'package:home_value/features/prediction/domain/entities/model_info.dart';
 import 'package:home_value/features/prediction/domain/entities/prediction_result.dart';
 import 'package:home_value/features/prediction/domain/repositories/prediction_repository.dart';
+import 'package:home_value/core/validation.dart' as validation;
 
 void main() {
   const baseUrl = 'http://8.8.8.8:8000';
   const blockedUrl = 'http://127.0.0.1:8000';
+
+  setUp(() {
+    validation.dnsLookup =
+        (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
+  });
+
+  tearDown(() {
+    validation.dnsLookup = InternetAddress.lookup;
+  });
 
   final features = const HouseFeatures(
     medInc: 8.3252,
@@ -338,6 +350,72 @@ void main() {
     test('is const with message', () {
       final e = const ModelNotLoadedException();
       expect(e.toString(), contains('Model not loaded'));
+    });
+  });
+
+  group('domain-base DNS resolve + IP pinning', () {
+    test('domain base resolves and pins POST to resolved IP', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(
+              {'prediction': 450000.0, 'model': 'xgb', 'model_version': '1.0'}),
+          200,
+        );
+      });
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://api.example.com:8000',
+        timeout: const Duration(seconds: 5),
+        client: client,
+      );
+      await datasource.predict(features);
+      expect(captured, isNotNull);
+      expect(captured!.url.host, '8.8.8.8');
+      expect(captured!.url.port, 8000);
+      expect(captured!.followRedirects, isFalse);
+    });
+
+    test('DNS timeout fails closed with ArgumentError', () async {
+      final never = Completer<List<InternetAddress>>();
+      validation.dnsLookup = (host) => never.future;
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://api.example.com:8000',
+        timeout: const Duration(milliseconds: 50),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(
+        () => datasource.predict(features),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('blocked resolved IP fails closed', () async {
+      validation.dnsLookup =
+          (host) async => <InternetAddress>[InternetAddress('169.254.169.254')];
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://api.example.com:8000',
+        timeout: const Duration(seconds: 5),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(
+        () => datasource.predict(features),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('DNS transport failure maps to ArgumentError (fail closed)', () async {
+      validation.dnsLookup =
+          (host) async => Future.error(const SocketException('offline'));
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://api.example.com:8000',
+        timeout: const Duration(seconds: 5),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(
+        () => datasource.predict(features),
+        throwsA(isA<ArgumentError>()),
+      );
     });
   });
 }

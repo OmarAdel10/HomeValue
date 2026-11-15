@@ -69,6 +69,39 @@ void main() {
       expect(isAllowedHost('::ffff:127.0.0.1'), isFalse);
     });
 
+    test('blocks SIIT ::ffff:0:127.0.0.1', () {
+      // SIIT pool 0:ffff:0:0/96 embedding loopback
+      expect(isAllowedHost('::ffff:0:127.0.0.1'), isFalse);
+      // SIIT embedding RFC 1918
+      expect(isAllowedHost('::ffff:0:10.0.0.1'), isFalse);
+    });
+
+    test('blocks ISATAP embedding private IPv4', () {
+      // ISATAP ::0200:5e10:ac10:01 embeds 172.16.0.1? No —
+      // ::0200:5efe:ac10:0001 embeds 172.16.0.0:1; use canonical form
+      // ::0200:5efe:ac10:0001 = marker 0200:5efe + 172.16.0.1
+      expect(isAllowedHost('::0200:5efe:ac10:1'), isFalse);
+    });
+
+    test('blocks deprecated site-local fec0::/10', () {
+      // /10 = bytes[0]==0xfe && bytes[1] high 2 bits == 11 (0xc0-0xff).
+      expect(isAllowedHost('fec0::1'), isFalse);
+      expect(isAllowedHost('fedf::1'), isFalse);
+      // febf::1 sits outside the range (high 2 bits = 10) and is not
+      // loopback/link-local, so it is allowed.
+      expect(isAllowedHost('febf::1'), isTrue);
+    });
+
+    test('blocks subdomains of localhost', () {
+      expect(isAllowedHost('sub.localhost'), isFalse);
+      expect(isAllowedHost('api.prod.localhost'), isFalse);
+    });
+
+    test('blocks empty host after trim', () {
+      expect(isAllowedHost(''), isFalse);
+      expect(isAllowedHost('   '), isFalse);
+    });
+
     test('blocks IPv4-compatible IPv6 ::127.0.0.1', () {
       expect(isAllowedHost('::127.0.0.1'), isFalse);
     });

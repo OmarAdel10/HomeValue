@@ -1,11 +1,24 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:home_value/features/comparison/data/datasources/comparison_remote_datasource.dart';
 import 'package:home_value/features/comparison/data/models/model_comparison_model.dart';
+import 'package:home_value/core/validation.dart' as validation;
 
 void main() {
+  setUp(() {
+    validation.dnsLookup =
+        (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
+  });
+
+  tearDown(() {
+    validation.dnsLookup = InternetAddress.lookup;
+  });
+
   group('ComparisonRemoteDataSource constructor + assertAllowedHost', () {
     test('accepts public IPv4 URL', () {
       expect(
@@ -164,4 +177,101 @@ void main() {
       expect(model.metrics.first.isBest, isFalse);
     });
   });
+  group('domain-base DNS resolve + IP pinning', () {
+    test('domain base resolves and pins request to resolved IP', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '[{"model_name":"m","rmse":1.0,"mae":0.5,"r2":0.9,"cv_std":0.1}]',
+          200,
+        );
+      });
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'http://api.example.com:8000',
+      );
+      await datasource.fetchModelComparison();
+      // http: request host is the resolved (validated) IP, port preserved.
+      expect(captured, isNotNull);
+      expect(captured!.url.host, '8.8.8.8');
+      expect(captured!.url.port, 8000);
+      expect(captured!.followRedirects, isFalse);
+    });
+
+    test('DNS timeout fails closed with ArgumentError', () async {
+      final never = Completer<List<InternetAddress>>();
+      validation.dnsLookup = (host) => never.future;
+      final datasource = ComparisonRemoteDataSource(
+        client: MockClient((_) async => http.Response('[]', 200)),
+        baseUrl: 'http://api.example.com:8000',
+        timeout: const Duration(milliseconds: 50),
+      );
+      expect(
+        () => datasource.fetchModelComparison(),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('blocked resolved IP fails closed', () async {
+      validation.dnsLookup =
+          (host) async => <InternetAddress>[InternetAddress('169.254.169.254')];
+      final datasource = ComparisonRemoteDataSource(
+        client: MockClient((_) async => http.Response('[]', 200)),
+        baseUrl: 'http://api.example.com:8000',
+      );
+      expect(
+        () => datasource.fetchModelComparison(),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('DNS failure fails closed', () async {
+      validation.dnsLookup =
+          (host) async => Future.error(const SocketException('offline'));
+      final datasource = ComparisonRemoteDataSource(
+        client: MockClient((_) async => http.Response('[]', 200)),
+        baseUrl: 'http://api.example.com:8000',
+      );
+      expect(
+        () => datasource.fetchModelComparison(),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('dispose never closes an injected client (owner manages it)', () {
+      var closed = 0;
+      final injectedClient = _CloseTrackingClient(() => closed++);
+      final datasource = ComparisonRemoteDataSource(
+        client: injectedClient,
+        baseUrl: 'http://8.8.8.8:8000',
+      );
+      datasource.dispose();
+      expect(closed, 0);
+    });
+
+    test('dispose on an owned client is safe and idempotent', () {
+      final datasource = ComparisonRemoteDataSource(
+        baseUrl: 'http://8.8.8.8:8000',
+      );
+      datasource.dispose();
+      datasource.dispose();
+    });
+  });
+}
+
+/// Minimal [http.BaseClient] subclass that counts close() calls so the
+/// datasource dispose contract is observable.
+class _CloseTrackingClient extends http.BaseClient {
+  final void Function() onClose;
+
+  _CloseTrackingClient(this.onClose);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  void close() => onClose();
 }

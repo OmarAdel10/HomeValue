@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +11,7 @@ import 'package:home_value/features/settings/presentation/bloc/settings_bloc.dar
 import 'package:home_value/features/settings/presentation/bloc/settings_event.dart';
 import 'package:home_value/features/settings/domain/entities/app_settings.dart';
 import 'package:home_value/features/settings/domain/repositories/settings_repository.dart';
+import 'package:home_value/core/validation.dart' as validation;
 
 class MockSettingsRepository extends Mock implements SettingsRepository {}
 
@@ -36,15 +39,23 @@ void main() {
       when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
         (_) async => AppSettings.defaults(),
       );
+      when(() => mockRepository.serverUrlBlocked).thenReturn(false);
+      // Stub DNS so auto-retrain scheduling never performs real lookups
+      // inside widget tests (offline determinism).
+      validation.dnsLookup =
+          (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
       settingsBloc = SettingsBloc(
         repository: mockRepository,
         httpClient: mockClient,
+        dnsLookup: (host) async =>
+            <InternetAddress>[InternetAddress('8.8.8.8')],
       );
     });
 
     tearDown(() {
       settingsBloc.close();
       mockClient.close();
+      validation.dnsLookup = InternetAddress.lookup;
     });
 
     testWidgets('shows settings form when loaded', (WidgetTester tester) async {
@@ -134,6 +145,50 @@ void main() {
 
       verify(() => mockRepository.updateServerUrl('http://example.com:8000/'))
           .called(1);
+    });
+
+    testWidgets('rejects a blocked server URL without updating',
+        (WidgetTester tester) async {
+      const testSettings = AppSettings(
+        serverUrl: 'http://example.com:8000',
+        themeMode: ThemeMode.system,
+        autoRetrain: false,
+      );
+
+      when(() => mockRepository.getSettings()).thenAnswer(
+        (_) async => testSettings,
+      );
+      when(() => mockRepository.updateServerUrl(any())).thenAnswer(
+        (_) async => testSettings,
+      );
+      when(() => mockRepository.updateThemeMode(any())).thenAnswer(
+        (_) async => testSettings,
+      );
+      when(() => mockRepository.updateAutoRetrain(any())).thenAnswer(
+        (_) async => testSettings,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BlocProvider<SettingsBloc>.value(
+            value: settingsBloc,
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Enter a blocked (private) server URL.
+      await tester.enterText(
+          find.byType(TextFormField), 'http://127.0.0.1:8000/');
+      await tester.pumpAndSettle();
+
+      // Tap save button: form validation must reject the host.
+      await tester.tap(find.text('Save Server URL'));
+      await tester.pumpAndSettle();
+
+      verifyNever(() => mockRepository.updateServerUrl(any()));
     });
 
     testWidgets('toggles theme mode', (WidgetTester tester) async {

@@ -1252,6 +1252,108 @@ void main() {
       });
     });
 
+    test('emits a suspension failure when the consecutive cap is reached', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(1));
+
+        // Trigger 4 more retries (total 5 = cap).
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(5));
+
+        // The suspension event surfaces as a failure state.
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        final failure = bloc.state as SettingsFailure;
+        expect(failure.message, contains('suspended'));
+        expect(failure.isLoadFailure, isFalse);
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a URL correction re-arms retraining after suspension', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        when(() => mockRepository.updateServerUrl(any())).thenAnswer(
+          (_) async =>
+              enabledSettings.copyWith(serverUrl: 'http://example.com:9000'),
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(1));
+
+        // Burn the failure cap.
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(5));
+
+        // Suspended: no more retries.
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(5));
+
+        // Correcting the server URL resets the cap and re-arms the timer.
+        bloc.add(const UpdateServerUrl('http://example.com:9000'));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(6));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
     test('skippedClosed outcome when bloc is closed', () async {
       final bloc = SettingsBloc(
         repository: mockRepository,
