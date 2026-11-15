@@ -34,6 +34,63 @@ void main() {
     expect(settings.lastAutoRetrainAt, isNull);
   });
 
+  test('getSettings validates each distinct URL once', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    var lookups = 0;
+    validation.dnsLookup = (host) async {
+      lookups++;
+      return <InternetAddress>[InternetAddress('8.8.8.8')];
+    };
+
+    await dataSource.getSettings();
+    await dataSource.getSettings();
+
+    expect(lookups, 1);
+  });
+
+  test('updateServerUrl refreshes the validation cache', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    var lookups = 0;
+    validation.dnsLookup = (host) async {
+      lookups++;
+      return <InternetAddress>[InternetAddress('8.8.8.8')];
+    };
+
+    await dataSource.getSettings();
+    await dataSource.updateServerUrl('http://example.org:9000');
+    await dataSource.getSettings();
+
+    expect(lookups, 2);
+  });
+
+  test('a blocked updateServerUrl does not poison the cache', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    var lookups = 0;
+    validation.dnsLookup = (host) async {
+      lookups++;
+      return <InternetAddress>[InternetAddress('8.8.8.8')];
+    };
+
+    await dataSource.getSettings();
+    await expectLater(
+      dataSource.updateServerUrl('http://127.0.0.1:8000/'),
+      throwsArgumentError,
+    );
+    final settings = await dataSource.getSettings();
+
+    expect(lookups, 1);
+    expect(settings.serverUrl, 'http://example.com:8000');
+  });
+
+  test('getSettings survives a generic DNS exception while offline', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    validation.dnsLookup = (host) async => throw Exception('offline');
+
+    final settings = await dataSource.getSettings();
+
+    expect(settings.serverUrl, 'http://example.com:8000');
+  });
+
   test('reads a stored retrain timestamp', () async {
     final stored = DateTime(2026, 10, 27, 12);
     SharedPreferences.setMockInitialValues(<String, Object>{

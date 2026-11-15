@@ -286,10 +286,15 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     // fails every window).
     final baseUri = Uri.parse(serverUrl.trim());
     final basePath = baseUri.path.replaceAll(RegExp(r'/+$'), '');
-    final trainUri = baseUri.replace(
+    // Rebuild from components: Uri.replace(query: null) KEEPS the existing
+    // query in Dart, so a saved URL like 'http://host:8000?x=1' would push
+    // the request through with the foreign query attached. A fresh Uri()
+    // omits query and fragment entirely.
+    final trainUri = Uri(
+      scheme: baseUri.scheme,
+      host: baseUri.host,
+      port: baseUri.port == 0 ? null : baseUri.port,
       path: '$basePath${AppConstants.trainEndpoint}',
-      query: null,
-      fragment: null,
     );
     // Resolve hostname at request time via stubbable _dnsLookup, re-validate
     // resolved IPs to prevent DNS rebinding TOCTOU, then connect directly to

@@ -280,6 +280,86 @@ void main() {
     );
 
     blocTest<SettingsBloc, SettingsState>(
+      'strips query and fragment from the stored server URL',
+      build: () {
+        recorder = RetrainRecorder();
+        addTearDown(recorder.client.close);
+        final taintedSettings = enabledSettings.copyWith(
+          serverUrl: 'http://example.com:8000?x=1#frag',
+        );
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => taintedSettings,
+        );
+        when(() => mockRepository.updateAutoRetrain(any())).thenAnswer(
+          (_) async => taintedSettings,
+        );
+        when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
+          (_) async => taintedSettings,
+        );
+        return SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+        );
+      },
+      seed: () => const SettingsLoaded(testSettings),
+      act: (bloc) => bloc.add(const ToggleAutoRetrain(true)),
+      wait: const Duration(milliseconds: 50),
+      expect: () => [
+        isA<SettingsLoaded>(),
+      ],
+      verify: (_) {
+        final url = recorder.requests.single.url;
+        expect(url.scheme, 'http');
+        expect(url.host, '8.8.8.8');
+        expect(url.path, '/train');
+        expect(url.hasQuery, isFalse);
+        expect(url.fragment, isEmpty);
+      },
+    );
+
+    blocTest<SettingsBloc, SettingsState>(
+      'keeps the hostname for https targets (no IP pinning)',
+      build: () {
+        recorder = RetrainRecorder();
+        addTearDown(recorder.client.close);
+        final secureSettings = enabledSettings.copyWith(
+          serverUrl: 'https://example.com:8000',
+        );
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => secureSettings,
+        );
+        when(() => mockRepository.updateAutoRetrain(any())).thenAnswer(
+          (_) async => secureSettings,
+        );
+        when(() => mockRepository.updateLastAutoRetrain(any())).thenAnswer(
+          (_) async => secureSettings,
+        );
+        return SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+        );
+      },
+      seed: () => const SettingsLoaded(testSettings),
+      act: (bloc) => bloc.add(const ToggleAutoRetrain(true)),
+      wait: const Duration(milliseconds: 50),
+      expect: () => [
+        isA<SettingsLoaded>(),
+      ],
+      verify: (_) {
+        final url = recorder.requests.single.url;
+        expect(url.scheme, 'https');
+        expect(url.host, 'example.com');
+        expect(url.path, '/train');
+      },
+    );
+
+    blocTest<SettingsBloc, SettingsState>(
       'does not retrain when the theme changes with auto retrain enabled',
       build: () {
         recorder = RetrainRecorder();
@@ -505,6 +585,47 @@ void main() {
 
     tearDown(() {
       recorder.client.close();
+    });
+
+    test('a URL change during DNS resolution cancels the pending retrain', () {
+      fakeAsync((async) {
+        final dnsCompleter = Completer<List<InternetAddress>>();
+        final overdue = current.subtract(const Duration(hours: 25));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: overdue),
+        );
+        when(() => mockRepository.updateServerUrl(any())).thenAnswer(
+          (_) async => enabledSettings.copyWith(
+            serverUrl: 'http://example.com:9000',
+            lastAutoRetrainAt: current.subtract(const Duration(minutes: 30)),
+          ),
+        );
+        final raceBloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) => dnsCompleter.future,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+        addTearDown(raceBloc.close);
+
+        raceBloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        // Overdue window arms a zero-delay timer; DNS lookup is pending.
+        advance(async, const Duration(milliseconds: 1));
+        expect(recorder.requests, isEmpty);
+
+        // Changing the URL bumps the retrain generation.
+        raceBloc.add(const UpdateServerUrl('http://example.com:9000'));
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+
+        // Completing DNS after the URL change must not fire the POST.
+        dnsCompleter.complete(<InternetAddress>[InternetAddress('8.8.8.8')]);
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+      });
     });
 
     test('keeps the 24h schedule across theme changes', () {
