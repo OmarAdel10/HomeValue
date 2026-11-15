@@ -85,3 +85,24 @@ Plane project `HOME` (HomeValue).
 - **HOME-41** — `ml_backend/src/ml_backend/api/predict.py:69-84` batch validation is
   untested: defaulted `ocean_proximity`, rejected invalid category, and the 1000
   sample cap have no cases in `tests/test_predict_api.py`.
+
+## HOME-39 Round 14 deferred findings (2026-11-15)
+
+- **HTTPS socket-level IP pinning** — `lib/features/settings/presentation/bloc/settings_bloc.dart`
+  (`_trainUri`) and `prediction_remote_datasource.dart` / `comparison_remote_datasource.dart`
+  keep the hostname for https targets instead of pinning the resolved IP, because
+  `uri.replace(host: ip)` breaks TLS SNI/cert verification. Socket-level pinning
+  (connect to validated IP, SNI = hostname) is the complete fix; needs a custom
+  connectionFactory or platform channel. Blocked-host validation still runs on
+  every resolution, so the TOCTOU window is bounded, not closed.
+- **bloc `e.toString()` error leakage** — `lib/features/prediction/presentation/bloc/prediction_bloc.dart`
+  and `lib/features/comparison/presentation/bloc/comparison_bloc.dart` emit
+  `e.toString()` in failure states, which can surface URLs/exception internals in
+  the UI. Pre-existing (not introduced by this branch). Replace with generic
+  messages + log type only.
+- **Design decision: default serverUrl** — `AppConstants.apiBaseUrl` /
+  `AppSettings.defaults()` use `http://example.com:8000` which routes to IANA if a
+  user never configures the app. Consider empty/explicit-first-config UX.
+- **Design decision: localhost workflow** — developers can no longer point the app
+  at a local backend (loopback is blocked by the SSRF allowlist). Consider a
+  debug-only override (kReleaseMode gate) for trusted-local development.
