@@ -106,3 +106,33 @@ Plane project `HOME` (HomeValue).
 - **Design decision: localhost workflow** — developers can no longer point the app
   at a local backend (loopback is blocked by the SSRF allowlist). Consider a
   debug-only override (kReleaseMode gate) for trusted-local development.
+
+## HOME-39 Round 15 deferred findings (2026-11-15)
+
+- **Extract shared resolve/validate/pin helper + repo.retrain()** (QA Medium M3) —
+  the DNS-resolve + per-address-allowlist + IPv4-preferred-pin sequence is
+  triplicated across `settings_bloc.dart` (`_trainUri`),
+  `prediction_remote_datasource.dart` (`_resolveAndValidateHost`/`_pinnedUri`) and
+  `comparison_remote_datasource.dart`. Extract into `lib/core/validation.dart`
+  and move the retrain POST out of the presentation layer into
+  `SettingsRepository.retrain()`. Refactor branch.
+- **Default serverUrl product decision** (QA Medium M6) — `http://example.com:8000`
+  default routes to IANA; awaiting user decision (empty/explicit-first-config UX).
+- **DNS timeout drift** (Info) — `_trainUri` uses 10s, prediction datasource uses
+  its `timeout` field, comparison datasource uses `AppConstants.apiTimeout`.
+  Standardize on one constant/seam.
+- **Domain-layer import** (Info) — `lib/features/settings/domain/entities/app_settings.dart`
+  imports `flutter/material.dart` (ThemeMode); consider moving ThemeMode out of
+  the domain layer.
+- **Default URL duplicated in 3 files** (Info) — `AppConstants.apiBaseUrl`,
+  `AppSettings.defaults()`, `SettingsLocalDataSource._defaultServerUrl`. Single
+  source of truth.
+- **fake_async flushMicrotasks ritual** (Info) — ~10 doubled/tripled
+  `flushMicrotasks()` calls in `bloc_test.dart`; fragile but green. Consider a
+  documented helper.
+- **Response body not capped** (Info) — retrain/comparison responses are read
+  fully into memory; cap size if untrusted servers are ever allowed.
+- **Shorthand IPv4 (`127.1`) + trailing-dot `localhost.`** (Info) — current
+  allowlist treats `127.1` as a non-4-part name (DNS lookup decides), and the
+  trailing-dot strip covers `localhost.`; verify platform resolvers cannot map
+  these to loopback in `validateServerUrl`.
