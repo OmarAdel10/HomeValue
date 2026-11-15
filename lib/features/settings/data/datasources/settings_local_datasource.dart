@@ -53,6 +53,12 @@ class SettingsLocalDataSource {
       await validateServerUrl(serverUrl);
     } on ArgumentError {
       log('Blocked server URL at load; retraining will fail closed');
+    } on Exception catch (e) {
+      // DNS offline/timeout during a local read must not prevent returning
+      // persisted preferences (theme/auto-retrain updates read via
+      // getSettings after persisting). Request-time validation stays
+      // fail-closed in the retrain/prediction flows.
+      log('Server URL check unavailable at load: ${e.runtimeType}');
     }
     final themeModeIndex = _prefs.getInt(_themeModeKey) ?? _defaultThemeMode;
     final autoRetrain = _prefs.getBool(_autoRetrainKey) ?? _defaultAutoRetrain;

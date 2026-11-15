@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import '../../../../core/constants.dart';
-import '../../../../core/validation.dart';
+import '../../../../core/validation.dart' as validation;
 import '../../domain/entities/house_features.dart';
 import '../../domain/entities/prediction_result.dart';
 import '../../domain/entities/model_info.dart';
@@ -23,11 +23,9 @@ class PredictionRemoteDataSource implements PredictionRepository {
     required this.timeout,
     this.baseUrlProvider,
     http.Client? client,
-  })  : _client = client ??
-            IOClient(
-                HttpClient()), // IOClient does NOT follow redirects by default (defense-in-depth against redirect-based SSRF)
+  })  : _client = client ?? IOClient(HttpClient()),
         _ownsClient = client == null {
-    assertAllowedHost(baseUrl);
+    validation.assertAllowedHost(baseUrl);
   }
 
   String get _base => baseUrlProvider?.call() ?? baseUrl;
@@ -38,44 +36,68 @@ class PredictionRemoteDataSource implements PredictionRepository {
   Future<String> _resolveAndValidateHost(String host) async {
     final resolved = InternetAddress.tryParse(host);
     if (resolved != null) {
-      if (!isAllowedHost(resolved.address)) {
+      if (!validation.isAllowedHost(resolved.address)) {
         throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
       return resolved.address.split('%').first;
     }
-    final addresses = await InternetAddress.lookup(host);
+    final addresses = await validation.dnsLookup(host).timeout(
+          timeout,
+          onTimeout: () => throw ArgumentError('DNS lookup timed out'),
+        );
     if (addresses.isEmpty) {
       throw ArgumentError('DNS resolution returned no addresses');
     }
-    String? firstValidated;
+    final validated = <InternetAddress>[];
     for (final address in addresses) {
-      if (!isAllowedHost(address.address)) {
+      if (!validation.isAllowedHost(address.address)) {
         throw ArgumentError('Resolved host is blocked: SSRF protection');
       }
-      firstValidated ??= address.address.split('%').first;
+      validated.add(address);
     }
-    return firstValidated!;
+    // Prefer IPv4 so an unreachable IPv6 address does not strand requests.
+    validated.sort((a, b) {
+      final aV4 = a.type == InternetAddressType.IPv4;
+      final bV4 = b.type == InternetAddressType.IPv4;
+      if (aV4 != bV4) return aV4 ? -1 : 1;
+      return 0;
+    });
+    return validated.first.address.split('%').first;
+  }
+
+  /// Sends an explicitly-constructed request with redirects disabled.
+  /// package:http follows 3xx by default, which would contact a redirect
+  /// target before rejectRedirect could see it (redirect-based SSRF).
+  Future<http.Response> _send(http.Request request, Duration t) {
+    return _client.send(request).then(http.Response.fromStream).timeout(t);
+  }
+
+  /// https keeps the original hostname so TLS SNI and certificate-name
+  /// verification use the domain certificate; http pins to the validated IP
+  /// so the client cannot re-resolve to a private address (DNS rebinding).
+  Uri _pinnedUri(Uri baseUri, String resolvedHost, String path) {
+    final withPath = baseUri.replace(path: path);
+    return baseUri.scheme == 'https'
+        ? withPath
+        : withPath.replace(host: resolvedHost);
   }
 
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
-    assertAllowedHost(_base);
+    validation.assertAllowedHost(_base);
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
-    final uri = baseUri.replace(
-        host: resolvedHost,
-        path: '${baseUri.path}${AppConstants.predictEndpoint}');
+    final uri = _pinnedUri(baseUri, resolvedHost,
+        '${baseUri.path}${AppConstants.predictEndpoint}');
     final body = jsonEncode(features.toJson());
 
-    final response = await _client
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: body,
-        )
-        .timeout(timeout);
+    final request = http.Request('POST', uri)
+      ..followRedirects = false
+      ..headers['Content-Type'] = 'application/json'
+      ..body = body;
+    final response = await _send(request, timeout);
 
-    rejectRedirect(response);
+    validation.rejectRedirect(response);
     if (response.statusCode == 200) {
       return PredictionResult.fromJson(jsonDecode(response.body));
     } else if (response.statusCode == 503) {
@@ -90,25 +112,22 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<double>> predictBatch(List<HouseFeatures> features) async {
-    assertAllowedHost(_base);
+    validation.assertAllowedHost(_base);
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
-    final uri = baseUri.replace(
-        host: resolvedHost,
-        path: '${baseUri.path}${AppConstants.predictBatchEndpoint}');
+    final uri = _pinnedUri(baseUri, resolvedHost,
+        '${baseUri.path}${AppConstants.predictBatchEndpoint}');
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
     });
 
-    final response = await _client
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: body,
-        )
-        .timeout(timeout);
+    final request = http.Request('POST', uri)
+      ..followRedirects = false
+      ..headers['Content-Type'] = 'application/json'
+      ..body = body;
+    final response = await _send(request, timeout);
 
-    rejectRedirect(response);
+    validation.rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return (data['predictions'] as List)
@@ -126,16 +145,16 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<ModelInfo> getModelInfo() async {
-    assertAllowedHost(_base);
+    validation.assertAllowedHost(_base);
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
-    final uri = baseUri.replace(
-        host: resolvedHost,
-        path: '${baseUri.path}${AppConstants.modelInfoEndpoint}');
+    final uri = _pinnedUri(baseUri, resolvedHost,
+        '${baseUri.path}${AppConstants.modelInfoEndpoint}');
 
-    final response = await _client.get(uri).timeout(timeout);
+    final request = http.Request('GET', uri)..followRedirects = false;
+    final response = await _send(request, timeout);
 
-    rejectRedirect(response);
+    validation.rejectRedirect(response);
     if (response.statusCode == 200) {
       return ModelInfo.fromJson(jsonDecode(response.body));
     } else {
@@ -148,16 +167,16 @@ class PredictionRemoteDataSource implements PredictionRepository {
 
   @override
   Future<List<ModelComparison>> getModelComparison() async {
-    assertAllowedHost(_base);
+    validation.assertAllowedHost(_base);
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
-    final uri = baseUri.replace(
-        host: resolvedHost,
-        path: '${baseUri.path}${AppConstants.modelComparisonEndpoint}');
+    final uri = _pinnedUri(baseUri, resolvedHost,
+        '${baseUri.path}${AppConstants.modelComparisonEndpoint}');
 
-    final response = await _client.get(uri).timeout(timeout);
+    final request = http.Request('GET', uri)..followRedirects = false;
+    final response = await _send(request, timeout);
 
-    rejectRedirect(response);
+    validation.rejectRedirect(response);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final models = (data['models'] as List)

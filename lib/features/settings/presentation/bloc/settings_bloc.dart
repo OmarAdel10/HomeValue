@@ -40,6 +40,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
 
   final Future<List<InternetAddress>> Function(String) _dnsLookup;
 
+  /// Bumped when auto-retrain is disabled so an in-flight retrain that is
+  /// still awaiting DNS can be invalidated before it POSTs.
+  int _retrainGeneration = 0;
+
   static const int _maxConsecutiveRetrainFailures = 5;
 
   SettingsBloc({
@@ -71,13 +75,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
 
   /// Creates an HTTP client for retrain requests.
   /// SSRF protection relies on validateServerUrl host allowlisting plus
-  /// fail-closed resolved-IP revalidation in _trainUri; redirect responses
-  /// are rejected by _triggerRetrain (3xx status codes are not followed).
+  /// fail-closed resolved-IP revalidation in _trainUri; every request is sent
+  /// with followRedirects=false (see _triggerRetrain) so a 3xx can never send
+  /// a second request to a redirect target before the status check rejects it.
   static http.Client _createClient() {
-    // IOClient does not follow HTTP redirects by default; each request is a
-    // single hop. 3xx responses reaching _triggerRetrain are rejected there
-    // (status >= 300 throws), providing defense-in-depth against redirect-based
-    // SSRF to private/metadata targets.
     return IOClient(HttpClient());
   }
 
@@ -105,6 +106,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _lastKnownSettings = settings;
       _failureCount = 0;
       emit(SettingsLoaded(settings));
+      // A blocked URL leaves the retrain timer unarmed (skippedBlocked never
+      // reschedules). Correcting the URL must restore scheduling while
+      // preserving the existing due-window calculation.
+      _syncTimer(settings.autoRetrain);
     } catch (e) {
       emit(_failure(e));
     }
@@ -135,6 +140,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       _failureCount = 0;
       emit(SettingsLoaded(settings));
       if (!settings.autoRetrain) {
+        // Invalidate any in-flight retrain (e.g. pending DNS) so a disabled
+        // switch never lets a stale operation POST after DNS completes.
+        _retrainGeneration++;
         _autoRetrainTimer?.cancel();
         _autoRetrainTimer = null;
       } else if (!wasEnabled) {
@@ -287,12 +295,28 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
           throw ArgumentError('Resolved host is blocked');
         }
       }
-      // Connect directly to the first validated IP so the HTTP client does not
-      // re-resolve the hostname at connect time (DNS rebinding TOCTOU).
-      return trainUri.replace(host: resolved.first.address);
-    } on ArgumentError {
-      // A resolved IP is blocked or DNS failed — fail closed, do not proceed.
-      rethrow;
+      // Prefer IPv4 so an unreachable IPv6 address does not strand requests.
+      final validated = resolved.toList()
+        ..sort((a, b) {
+          final aV4 = a.type == InternetAddressType.IPv4;
+          final bV4 = b.type == InternetAddressType.IPv4;
+          if (aV4 != bV4) return aV4 ? -1 : 1;
+          return 0;
+        });
+      if (trainUri.scheme == 'https') {
+        // Keep the original hostname so TLS SNI and certificate-name
+        // verification use the domain certificate (replacing the host with an
+        // IP breaks https handshakes). Resolved IPs were validated above;
+        // socket-level pinning for https is tracked as a follow-up.
+        return trainUri;
+      }
+      // http: connect directly to the first validated IP so the HTTP client
+      // does not re-resolve the hostname at connect time (DNS rebinding TOCTOU).
+      return trainUri.replace(host: validated.first.address);
+    } on SocketException {
+      // DNS failure must fail closed as ArgumentError so callers classify it
+      // as skipped (not a retrain failure) — see _triggerRetrain.
+      throw ArgumentError('DNS lookup failed');
     }
   }
 
@@ -305,6 +329,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     }
     _retrainInFlight = true;
     bool isRealAttempt = false;
+    final gen = _retrainGeneration;
     Uri? uri;
     _RetrainOutcome? outcome;
     try {
@@ -325,9 +350,23 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       // validateServerUrl + resolved-IP revalidation + IP pinning. Any blocked
       // hostname throws before we reach the POST, so no separate hostname-only
       // re-check is needed here (it cannot catch domain-name rebinding).
-      final response = await _httpClient.post(uri, headers: {
-        'Content-Type': 'application/json'
-      }).timeout(AppConstants.apiTimeout);
+      // Invalidate work whose enabling condition disappeared while DNS was
+      // pending (user disabled auto-retrain mid-flight); the generation also
+      // prevents a later re-enable from reviving stale work.
+      if (_retrainGeneration != gen || !_isEnabled) {
+        outcome = _RetrainOutcome.skippedNotDue;
+        return _RetrainOutcome.skippedNotDue;
+      }
+      // Explicit request with redirects disabled: package:http follows 3xx by
+      // default, which would contact a redirect target before the status
+      // check below could reject it (redirect-based SSRF).
+      final request = http.Request('POST', uri)
+        ..followRedirects = false
+        ..headers['Content-Type'] = 'application/json';
+      final response = await _httpClient
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(AppConstants.apiTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw http.ClientException('retrain rejected');
       }

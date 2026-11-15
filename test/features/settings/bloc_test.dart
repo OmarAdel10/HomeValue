@@ -314,11 +314,13 @@ void main() {
       build: () {
         recorder = RetrainRecorder();
         addTearDown(recorder.client.close);
+        final recentRun = DateTime.now().subtract(const Duration(minutes: 30));
         when(() => mockRepository.getSettings()).thenAnswer(
           (_) async => enabledSettings,
         );
         when(() => mockRepository.updateServerUrl(any())).thenAnswer(
-          (_) async => enabledMovedSettings,
+          (_) async =>
+              enabledMovedSettings.copyWith(lastAutoRetrainAt: recentRun),
         );
         return SettingsBloc(
           repository: mockRepository,
@@ -328,7 +330,12 @@ void main() {
           retrainInterval: const Duration(hours: 1),
         );
       },
-      seed: () => const SettingsLoaded(enabledSettings),
+      seed: () => SettingsLoaded(
+        enabledSettings.copyWith(
+          lastAutoRetrainAt:
+              DateTime.now().subtract(const Duration(minutes: 30)),
+        ),
+      ),
       act: (bloc) => bloc.add(const UpdateServerUrl('http://example.com:9000')),
       wait: const Duration(milliseconds: 50),
       expect: () => [
@@ -802,6 +809,8 @@ void main() {
         final requests = <http.Request>[];
         final redirectingClient = MockClient((request) async {
           requests.add(request);
+          expect(request.followRedirects, isFalse,
+              reason: 'redirects must never be followed (SSRF)');
           return http.Response('', 302);
         });
         final bloc = SettingsBloc(

@@ -65,8 +65,13 @@ bool isAllowedHost(String host) {
     // parts), block it. Block alternative IPv4 notations (bare integer like
     // 2130706433, or hex like 0x7f000001) that bypass strict dotted-decimal
     // parsing. Otherwise treat as a domain name and allow it.
-    if (stripped.split('.').length == 4) {
-      return false; // Malformed IPv4: blocked
+    // Only classify 4-part input as malformed IPv4 when it is numeric
+    // address-shaped (e.g. 999.1.1.1). Valid multi-label DNS names such as
+    // api.prod.example.com must proceed to DNS validation.
+    final parts = stripped.split('.');
+    if (parts.length == 4 &&
+        parts.every((p) => RegExp(r'^\d{1,3}$').hasMatch(p))) {
+      return false; // Malformed numeric IPv4: blocked
     }
     if (RegExp(r'^\d+$').hasMatch(stripped) ||
         RegExp(r'^0x[0-9a-fA-F]+$').hasMatch(stripped)) {

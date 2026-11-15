@@ -17,6 +17,13 @@ void main() {
     test('allows public domain', () {
       expect(isAllowedHost('example.com'), isTrue);
       expect(isAllowedHost('api.example.com'), isTrue);
+      // Regression: 4-label DNS names are not malformed IPv4.
+      expect(isAllowedHost('api.prod.example.com'), isTrue);
+    });
+
+    test('blocks malformed numeric IPv4 with 4 parts', () {
+      expect(isAllowedHost('999.1.1.1'), isFalse);
+      expect(isAllowedHost('300.1.1.1'), isFalse);
     });
 
     test('allows public IPv4', () {
@@ -86,8 +93,8 @@ void main() {
       expect(isAllowedHost('::1%eth0'), isFalse);
     });
 
-    test('blocks malformed IPv4 with 4 dot parts', () {
-      expect(isAllowedHost('127.0.0.o1'), isFalse);
+    test('allows non-numeric 4-label names (DNS domains)', () {
+      expect(isAllowedHost('127.0.0.o1'), isTrue);
     });
 
     test('blocks alternative IPv4 notation integer', () {
@@ -139,23 +146,30 @@ void main() {
       expect(isAllowedHost('192.169.0.1'), isTrue);
     });
 
-    test('non-numeric octet is treated as blocked', () {
-      expect(isAllowedHost('127.0.0.o1'), isFalse);
+    test('non-numeric octet is allowed (treated as DNS name)', () {
+      expect(isAllowedHost('127.0.0.o1'), isTrue);
     });
   });
 
   group('validateServerUrl', () {
-    test('accepts public http URL', () {
-      expect(
-        () async => validateServerUrl('http://example.com/train'),
-        returnsNormally,
+    test('accepts public http URL', () async {
+      await expectLater(
+        validateServerUrl('http://example.com/train'),
+        completes,
       );
     });
 
-    test('accepts public https URL', () {
-      expect(
-        () async => validateServerUrl('https://example.com/train'),
-        returnsNormally,
+    test('accepts public https URL', () async {
+      await expectLater(
+        validateServerUrl('https://example.com/train'),
+        completes,
+      );
+    });
+
+    test('accepts multi-label public domain (regression)', () async {
+      await expectLater(
+        validateServerUrl('https://api.prod.example.com/train'),
+        completes,
       );
     });
 
@@ -241,10 +255,10 @@ void main() {
       );
     });
 
-    test('allows public IPv6 documentation range', () {
-      expect(
-        () async => validateServerUrl('http://[2001:db8::1]:8000/train'),
-        returnsNormally,
+    test('allows public IPv6 documentation range', () async {
+      await expectLater(
+        validateServerUrl('http://[2001:db8::1]:8000/train'),
+        completes,
       );
     });
 
@@ -264,11 +278,11 @@ void main() {
   });
 
   group('validateServerUrl DNS resolve+revalidate', () {
-    test('allows domain resolving to public IP', () {
+    test('allows domain resolving to public IP', () async {
       dnsLookup = (host) async => <InternetAddress>[InternetAddress('8.8.8.8')];
-      expect(
-        () async => validateServerUrl('http://example.com/train'),
-        returnsNormally,
+      await expectLater(
+        validateServerUrl('http://example.com/train'),
+        completes,
       );
     });
 

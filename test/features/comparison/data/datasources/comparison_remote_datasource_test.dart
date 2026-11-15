@@ -110,7 +110,11 @@ void main() {
     });
 
     test('rejectRedirect throws on 302', () async {
-      final client = MockClient((_) async => http.Response('', 302));
+      final client = MockClient((request) async {
+        expect(request.followRedirects, isFalse,
+            reason: 'redirects must never be followed (SSRF)');
+        return http.Response('', 302);
+      });
       final datasource = ComparisonRemoteDataSource(
         client: client,
         baseUrl: 'http://8.8.8.8:8000',

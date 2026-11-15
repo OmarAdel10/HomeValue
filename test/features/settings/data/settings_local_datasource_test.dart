@@ -262,11 +262,10 @@ void main() {
     );
   });
 
-  test('validateServerUrl rejects non-numeric IPv4 octet', () {
-    expect(
-      () async => SettingsLocalDataSource.validateServerUrl(
-          'http://127.0.0.o1:8000/train'),
-      throwsA(isArgumentError),
+  test('validateServerUrl allows non-numeric 4-label DNS names', () async {
+    await expectLater(
+      SettingsLocalDataSource.validateServerUrl('http://127.0.0.o1:8000/train'),
+      completes,
     );
   });
 
