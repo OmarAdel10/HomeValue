@@ -82,13 +82,23 @@ class PredictionRemoteDataSource implements PredictionRepository {
         : withPath.replace(host: resolvedHost);
   }
 
+  /// Joins the base path and endpoint without producing double slashes when
+  /// the configured base URL ends with a trailing slash.
+  String _endpointPath(Uri baseUri, String endpoint) {
+    final basePath = baseUri.path;
+    final trimmed = basePath.endsWith('/')
+        ? basePath.substring(0, basePath.length - 1)
+        : basePath;
+    return '$trimmed$endpoint';
+  }
+
   @override
   Future<PredictionResult> predict(HouseFeatures features) async {
     validation.assertAllowedHost(_base);
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
-        '${baseUri.path}${AppConstants.predictEndpoint}');
+        _endpointPath(baseUri, AppConstants.predictEndpoint));
     final body = jsonEncode(features.toJson());
 
     final request = http.Request('POST', uri)
@@ -116,7 +126,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
-        '${baseUri.path}${AppConstants.predictBatchEndpoint}');
+        _endpointPath(baseUri, AppConstants.predictBatchEndpoint));
     final body = jsonEncode({
       'features': features.map((f) => f.toJson()).toList(),
     });
@@ -149,7 +159,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
-        '${baseUri.path}${AppConstants.modelInfoEndpoint}');
+        _endpointPath(baseUri, AppConstants.modelInfoEndpoint));
 
     final request = http.Request('GET', uri)..followRedirects = false;
     final response = await _send(request, timeout);
@@ -171,7 +181,7 @@ class PredictionRemoteDataSource implements PredictionRepository {
     final baseUri = Uri.parse(_base);
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     final uri = _pinnedUri(baseUri, resolvedHost,
-        '${baseUri.path}${AppConstants.modelComparisonEndpoint}');
+        _endpointPath(baseUri, AppConstants.modelComparisonEndpoint));
 
     final request = http.Request('GET', uri)..followRedirects = false;
     final response = await _send(request, timeout);

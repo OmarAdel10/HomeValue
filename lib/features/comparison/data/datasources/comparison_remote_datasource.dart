@@ -70,8 +70,11 @@ class ComparisonRemoteDataSource {
 
   Future<ModelComparisonModel> fetchModelComparison() async {
     validation.assertAllowedHost(baseUrl);
+    final trimmedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     final baseUri =
-        Uri.parse('$baseUrl${AppConstants.modelComparisonEndpoint}');
+        Uri.parse('$trimmedBase${AppConstants.modelComparisonEndpoint}');
     final resolvedHost = await _resolveAndValidateHost(baseUri.host);
     // https keeps the original hostname so TLS SNI and certificate-name
     // verification use the domain certificate; http pins to the validated IP

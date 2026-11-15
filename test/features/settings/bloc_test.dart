@@ -547,6 +547,44 @@ void main() {
       });
     });
 
+    test('cancelles an in-flight retrain when auto retrain is disabled', () {
+      fakeAsync((async) {
+        final dnsCompleter = Completer<List<InternetAddress>>();
+        final overdue = current.subtract(const Duration(hours: 25));
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async => enabledSettings.copyWith(lastAutoRetrainAt: overdue),
+        );
+        when(() => mockRepository.updateAutoRetrain(false)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: false),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) => dnsCompleter.future,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+        addTearDown(bloc.close);
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        // Overdue window arms a zero-delay timer; DNS lookup is pending.
+        advance(async, const Duration(milliseconds: 1));
+        expect(recorder.requests, isEmpty);
+
+        // Disabling auto retrain bumps the retrain generation.
+        bloc.add(const ToggleAutoRetrain(false));
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+
+        // Completing DNS after the disable must not fire the POST.
+        dnsCompleter.complete(<InternetAddress>[InternetAddress('8.8.8.8')]);
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(recorder.requests, isEmpty);
+      });
+    });
+
     test('waits for the window when auto retrain is turned on', () {
       fakeAsync((async) {
         final lastRun = current.subtract(const Duration(hours: 1));
