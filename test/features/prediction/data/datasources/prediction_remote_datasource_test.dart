@@ -417,5 +417,64 @@ void main() {
         throwsA(isA<ArgumentError>()),
       );
     });
+
+    test('https base keeps the hostname (no IP pinning)', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(
+              {'prediction': 450000.0, 'model': 'xgb', 'model_version': '1.0'}),
+          200,
+        );
+      });
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'https://api.example.com:8000',
+        timeout: const Duration(seconds: 5),
+        client: client,
+      );
+      await datasource.predict(features);
+      // https: the original hostname is preserved so TLS SNI and
+      // certificate-name verification use the domain certificate.
+      expect(captured, isNotNull);
+      expect(captured!.url.host, 'api.example.com');
+      expect(captured!.url.port, 8000);
+      expect(captured!.followRedirects, isFalse);
+    });
+
+    test('baseUrlProvider supplies the request base URL', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(
+              {'prediction': 450000.0, 'model': 'xgb', 'model_version': '1.0'}),
+          200,
+        );
+      });
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://8.8.8.8:8000',
+        timeout: const Duration(seconds: 5),
+        baseUrlProvider: () => 'http://api.example.com:8000',
+        client: client,
+      );
+      await datasource.predict(features);
+      expect(captured, isNotNull);
+      expect(captured!.url.host, '8.8.8.8');
+      expect(captured!.url.port, 8000);
+    });
+
+    test('a blocked host from baseUrlProvider fails closed', () async {
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://8.8.8.8:8000',
+        timeout: const Duration(seconds: 5),
+        baseUrlProvider: () => 'http://127.0.0.1:8000',
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      await expectLater(
+        datasource.predict(features),
+        throwsA(isArgumentError),
+      );
+    });
   });
 }

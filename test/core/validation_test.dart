@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -87,14 +88,52 @@ void main() {
       // /10 = bytes[0]==0xfe && bytes[1] high 2 bits == 11 (0xc0-0xff).
       expect(isAllowedHost('fec0::1'), isFalse);
       expect(isAllowedHost('fedf::1'), isFalse);
-      // febf::1 sits outside the range (high 2 bits = 10) and is not
-      // loopback/link-local, so it is allowed.
-      expect(isAllowedHost('febf::1'), isTrue);
+      expect(isAllowedHost('feff::1'), isFalse);
+    });
+
+    test('blocks full link-local fe80::/10 range', () {
+      // RFC 4291 link-local spans fe80-febf (high 2 bits = 10). The SDK
+      // isLinkLocal getter only covers fe8x, so the allowlist must check
+      // the range explicitly.
+      expect(isAllowedHost('fe80::1'), isFalse);
+      expect(isAllowedHost('fe90::1'), isFalse);
+      expect(isAllowedHost('fea0::1'), isFalse);
+      expect(isAllowedHost('febf::1'), isFalse);
     });
 
     test('blocks subdomains of localhost', () {
       expect(isAllowedHost('sub.localhost'), isFalse);
       expect(isAllowedHost('api.prod.localhost'), isFalse);
+    });
+
+    test('blocks remaining special-use IPv4 ranges', () {
+      // CGNAT 100.64/10
+      expect(isAllowedHost('100.64.0.1'), isFalse);
+      expect(isAllowedHost('100.127.255.255'), isFalse);
+      // TEST-NET-1/2/3
+      expect(isAllowedHost('192.0.2.1'), isFalse);
+      expect(isAllowedHost('198.51.100.1'), isFalse);
+      expect(isAllowedHost('203.0.113.1'), isFalse);
+      // 6to4 relay 192.88.99/24
+      expect(isAllowedHost('192.88.99.1'), isFalse);
+      // Benchmarking 198.18/15
+      expect(isAllowedHost('198.18.0.1'), isFalse);
+      expect(isAllowedHost('198.19.255.255'), isFalse);
+      // Multicast 224/4 and reserved 240/4
+      expect(isAllowedHost('224.0.0.1'), isFalse);
+      expect(isAllowedHost('240.0.0.1'), isFalse);
+      expect(isAllowedHost('255.255.255.255'), isFalse);
+      // IETF protocol assignments 192.0.0/24
+      expect(isAllowedHost('192.0.0.1'), isFalse);
+    });
+
+    test('validateServerUrl fails closed on DNS lookup timeout', () async {
+      final hung = Completer<List<InternetAddress>>();
+      dnsLookup = (host) => hung.future;
+      await expectLater(
+        validateServerUrl('http://hanging-dns.example.com:8000'),
+        throwsA(isArgumentError),
+      );
     });
 
     test('blocks empty host after trim', () {

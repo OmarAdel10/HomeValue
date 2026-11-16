@@ -408,7 +408,10 @@ void main() {
       });
       await tester.pumpAndSettle();
 
-      expect(find.text('Could not update settings'), findsOneWidget);
+      // The snackbar surfaces the bloc's (leak-safe) failure message so
+      // suspension notices are visible, not a hardcoded generic string.
+      expect(find.text('Operation failed'), findsOneWidget);
+      expect(find.text('Could not update settings'), findsNothing);
       expect(find.text('Could not load settings'), findsNothing);
       expect(find.text('API Server'), findsOneWidget);
     });

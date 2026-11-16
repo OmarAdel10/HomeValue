@@ -144,19 +144,17 @@ void main() {
 
   // --- validateServerUrl tests (SSRF mitigation) ---
 
-  test('validateServerUrl accepts public http URL', () {
-    expect(
-      () =>
-          SettingsLocalDataSource.validateServerUrl('http://example.com/train'),
-      returnsNormally,
+  test('validateServerUrl accepts public http URL', () async {
+    await expectLater(
+      SettingsLocalDataSource.validateServerUrl('http://example.com/train'),
+      completes,
     );
   });
 
-  test('validateServerUrl accepts public https URL', () {
-    expect(
-      () async => SettingsLocalDataSource.validateServerUrl(
-          'https://example.com/train'),
-      returnsNormally,
+  test('validateServerUrl accepts public https URL', () async {
+    await expectLater(
+      SettingsLocalDataSource.validateServerUrl('https://example.com/train'),
+      completes,
     );
   });
 
@@ -236,11 +234,11 @@ void main() {
     );
   });
 
-  test('validateServerUrl allows public IPv6 documentation range', () {
-    expect(
-      () async => SettingsLocalDataSource.validateServerUrl(
+  test('validateServerUrl allows public IPv6 documentation range', () async {
+    await expectLater(
+      SettingsLocalDataSource.validateServerUrl(
           'http://[2001:db8::1]:8000/train'),
-      returnsNormally,
+      completes,
     );
   });
 
@@ -326,11 +324,10 @@ void main() {
     );
   });
 
-  test('validateServerUrl allows public IP outside blocked ranges', () {
-    expect(
-      () async => SettingsLocalDataSource.validateServerUrl(
-          'http://8.8.8.8:8000/train'),
-      returnsNormally,
+  test('validateServerUrl allows public IP outside blocked ranges', () async {
+    await expectLater(
+      SettingsLocalDataSource.validateServerUrl('http://8.8.8.8:8000/train'),
+      completes,
     );
   });
 

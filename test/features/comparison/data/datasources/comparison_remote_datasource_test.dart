@@ -258,6 +258,65 @@ void main() {
       datasource.dispose();
     });
   });
+
+  group('https keeps the hostname and baseUrlProvider is honoured', () {
+    test('https base keeps the hostname (no IP pinning)', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '[{"model_name":"m","rmse":1.0,"mae":0.5,"r2":0.9,"cv_std":0.1}]',
+          200,
+        );
+      });
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'https://api.example.com:8000',
+      );
+      await datasource.fetchModelComparison();
+      // https: the original hostname is preserved so TLS SNI and
+      // certificate-name verification use the domain certificate.
+      expect(captured, isNotNull);
+      expect(captured!.url.host, 'api.example.com');
+      expect(captured!.url.port, 8000);
+      expect(captured!.followRedirects, isFalse);
+    });
+
+    test('baseUrlProvider supplies the request base URL', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '[{"model_name":"m","rmse":1.0,"mae":0.5,"r2":0.9,"cv_std":0.1}]',
+          200,
+        );
+      });
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'http://8.8.8.8:8000',
+        baseUrlProvider: () => 'http://api.example.com:8000',
+      );
+      await datasource.fetchModelComparison();
+      expect(captured, isNotNull);
+      expect(captured!.url.host, '8.8.8.8');
+      expect(captured!.url.port, 8000);
+    });
+
+    test('a blocked host from baseUrlProvider fails closed', () async {
+      final client = MockClient((request) async {
+        fail('request must not be sent to a blocked host');
+      });
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'http://8.8.8.8:8000',
+        baseUrlProvider: () => 'http://127.0.0.1:8000',
+      );
+      await expectLater(
+        datasource.fetchModelComparison(),
+        throwsA(isArgumentError),
+      );
+    });
+  });
 }
 
 /// Minimal [http.BaseClient] subclass that counts close() calls so the

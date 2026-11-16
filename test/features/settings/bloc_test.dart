@@ -668,7 +668,7 @@ void main() {
       });
     });
 
-    test('cancelles an in-flight retrain when auto retrain is disabled', () {
+    test('cancels an in-flight retrain when auto retrain is disabled', () {
       fakeAsync((async) {
         final dnsCompleter = Completer<List<InternetAddress>>();
         final overdue = current.subtract(const Duration(hours: 25));
@@ -1475,19 +1475,111 @@ void main() {
       });
     });
 
-    test('skippedClosed outcome when bloc is closed', () async {
-      final bloc = SettingsBloc(
-        repository: mockRepository,
-        httpClient: recorder.client,
-        dnsLookup: (host) async =>
-            <InternetAddress>[InternetAddress('8.8.8.8')],
-      );
-      await bloc.close();
+    test('a success between failures resets the consecutive counter', () {
+      fakeAsync((async) {
+        var failNext = true;
+        final requests = <http.Request>[];
+        final flakyClient = MockClient((request) async {
+          requests.add(request);
+          if (failNext) {
+            throw http.ClientException('backend down');
+          }
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: flakyClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
 
-      // Bloc is closed: isClosed is true, _triggerRetrain returns skippedClosed
-      // without attempting any retrain. Adding events after close is not allowed,
-      // so we verify close() completed cleanly and no retrain requests exist.
-      expect(recorder.requests, isEmpty);
+        // 2 consecutive failures.
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(2));
+
+        // A success must reset the consecutive counter (suspension counts
+        // consecutive, not cumulative, failures).
+        failNext = false;
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(3));
+
+        // 4 more consecutive failures — cumulative 6, but only 4 since the
+        // success, so the bloc must NOT suspend yet.
+        failNext = true;
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        expect(requests, hasLength(7));
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        // 5th consecutive failure reaches the cap: suspension surfaces.
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(8));
+        expect(bloc.state, isA<SettingsFailure>());
+        expect((bloc.state as SettingsFailure).message, contains('suspended'));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a DNS outage reschedules instead of disarming retraining', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        var dnsDown = true;
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) async {
+            if (dnsDown) {
+              throw const SocketException('DNS server unreachable');
+            }
+            return <InternetAddress>[InternetAddress('8.8.8.8')];
+          },
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        // First window: DNS outage must not POST and must not silently
+        // disarm the timer (the old behaviour never rescheduled).
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, isEmpty);
+
+        // DNS recovers: the next window must fire the retrain request.
+        dnsDown = false;
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
     });
   });
 }
