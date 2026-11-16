@@ -22,6 +22,14 @@ enum _RetrainOutcome {
   skippedInFlight, // already in flight, no attempt
   skippedNotDue, // retrain window not yet elapsed, no attempt
   skippedBlocked, // server URL blocked by SSRF rules, retraining fail-closed
+  skippedUnavailable, // transient DNS outage — rescheduled with backoff
+}
+
+/// DNS could not be resolved (transport failure or timeout). Distinct from a
+/// policy block so a transient network outage is retried later instead of
+/// silently disarming auto-retrain permanently.
+class _DnsUnavailableError extends ArgumentError {
+  _DnsUnavailableError(super.message);
 }
 
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
@@ -91,6 +99,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       final settings = await repository.getSettings();
       _lastKnownSettings = settings;
       _failureCount = 0;
+      // Reload grants a fresh scheduling window: reset the consecutive
+      // failure counter so a post-suspension retry starts clean instead of
+      // growing the counter past the cap ('suspended after 6').
+      _consecutiveRetrainFailures = 0;
       emit(SettingsLoaded(settings));
       _syncTimer(settings.autoRetrain);
     } catch (e) {
@@ -304,10 +316,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     try {
       final resolved = await _dnsLookup(trainUri.host).timeout(
         const Duration(seconds: 10),
-        onTimeout: () => throw ArgumentError('DNS lookup timed out'),
+        onTimeout: () => throw _DnsUnavailableError('DNS lookup timed out'),
       );
       if (resolved.isEmpty) {
-        throw ArgumentError('DNS resolution returned no addresses');
+        throw _DnsUnavailableError('DNS resolution returned no addresses');
       }
       for (final address in resolved) {
         if (!isAllowedHost(address.address)) {
@@ -336,9 +348,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         host: validated.first.address.split('%').first,
       );
     } on SocketException {
-      // DNS failure must fail closed as ArgumentError so callers classify it
-      // as skipped (not a retrain failure) — see _triggerRetrain.
-      throw ArgumentError('DNS lookup failed');
+      // DNS transport failure is transient: throw the dedicated error so
+      // _triggerRetrain reschedules with backoff instead of silently
+      // disarming auto-retrain (policy blocks stay ArgumentError).
+      throw _DnsUnavailableError('DNS lookup failed');
     }
   }
 
@@ -393,14 +406,25 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         throw http.ClientException('retrain rejected');
       }
       _lastKnownSettings = await repository.updateLastAutoRetrain(_now());
-      _lastKnownSettings ??= settings;
       _consecutiveRetrainFailures = 0;
       isRealAttempt = true;
       outcome = _RetrainOutcome.performed;
       return _RetrainOutcome.performed;
     } on ArgumentError catch (e) {
-      // Blocked resolved IP or DNS failure — fail-closed without consuming
-      // the consecutive failure cap (SSRF block is not a retrain failure).
+      if (e is _DnsUnavailableError) {
+        // Transient DNS outage: count as a real attempt and reschedule with
+        // backoff. One network blip must never silently and permanently
+        // disarm auto-retrain (the cap eventually surfaces a visible
+        // suspension through RetrainSuspended).
+        log('Auto-retrain skipped: DNS unavailable');
+        _consecutiveRetrainFailures++;
+        isRealAttempt = true;
+        outcome = _RetrainOutcome.skippedUnavailable;
+        return _RetrainOutcome.skippedUnavailable;
+      }
+      // Policy block (sync validation or a resolved IP allowlisted out) —
+      // fail-closed without consuming the consecutive failure cap (SSRF
+      // block is not a retrain failure).
       log('Auto-retrain blocked: ${e.runtimeType}');
       outcome = _RetrainOutcome.skippedBlocked;
       return _RetrainOutcome.skippedBlocked;
@@ -415,22 +439,28 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       if (isRealAttempt) {
         _lastAttemptAt = _now();
       }
-      // Only reschedule for real attempts (performed/failed) and normal
-      // window skips (skippedNotDue). Never reschedule for skippedBlocked —
-      // blocked URLs must not keep retrying every window.
+      // Only reschedule for real attempts (performed/failed/unavailable) and
+      // normal window skips (skippedNotDue). Never reschedule for
+      // skippedBlocked — blocked URLs must not keep retrying every window.
       if (outcome == _RetrainOutcome.performed ||
           outcome == _RetrainOutcome.failed ||
+          outcome == _RetrainOutcome.skippedUnavailable ||
           outcome == _RetrainOutcome.skippedNotDue) {
         if (_isEnabled &&
             _consecutiveRetrainFailures < _maxConsecutiveRetrainFailures) {
           _scheduleNextRetrain();
         } else if (_isEnabled &&
-            outcome == _RetrainOutcome.failed &&
+            (outcome == _RetrainOutcome.failed ||
+                outcome == _RetrainOutcome.skippedUnavailable) &&
             _consecutiveRetrainFailures >= _maxConsecutiveRetrainFailures) {
           // Suspension must be visible: surface it through the normal event
           // pipeline instead of failing silently (fire-and-forget caller
-          // cannot emit directly outside a handler).
-          add(RetrainSuspended(_consecutiveRetrainFailures));
+          // cannot emit directly outside a handler). The bloc may have been
+          // closed while the retrain was in flight — adding to a closed bloc
+          // throws, so guard first.
+          if (!isClosed) {
+            add(RetrainSuspended(_consecutiveRetrainFailures));
+          }
         }
       }
     }

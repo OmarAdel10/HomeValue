@@ -82,21 +82,26 @@ class PredictionRemoteDataSource implements PredictionRepository {
   /// https keeps the original hostname so TLS SNI and certificate-name
   /// verification use the domain certificate; http pins to the validated IP
   /// so the client cannot re-resolve to a private address (DNS rebinding).
+  /// Rebuilt from components so a foreign query/fragment on the configured
+  /// base URL (Uri.replace keeps query: null in Dart) can never leak into a
+  /// request URL.
   Uri _pinnedUri(Uri baseUri, String resolvedHost, String path) {
-    final withPath = baseUri.replace(path: path);
+    final rebuilt = Uri(
+      scheme: baseUri.scheme,
+      host: baseUri.host,
+      port: baseUri.port == 0 ? null : baseUri.port,
+      path: path,
+    );
     return baseUri.scheme == 'https'
-        ? withPath
-        : withPath.replace(host: resolvedHost);
+        ? rebuilt
+        : rebuilt.replace(host: resolvedHost);
   }
 
-  /// Joins the base path and endpoint without producing double slashes when
-  /// the configured base URL ends with a trailing slash.
+  /// Joins the base path and endpoint without producing double slashes,
+  /// regardless of how many trailing slashes the configured base URL has.
   String _endpointPath(Uri baseUri, String endpoint) {
-    final basePath = baseUri.path;
-    final trimmed = basePath.endsWith('/')
-        ? basePath.substring(0, basePath.length - 1)
-        : basePath;
-    return '$trimmed$endpoint';
+    final basePath = baseUri.path.replaceAll(RegExp(r'/+$'), '');
+    return '$basePath$endpoint';
   }
 
   @override

@@ -1,5 +1,8 @@
 name: advanced-machine-learning CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [development, master]
@@ -22,7 +25,7 @@ jobs:
         run: flutter pub get
 
       - name: Format check
-        run: dart format --set-exit-if-changed lib test
+        run: dart format --set-exit-if-changed lib test integration_test
 
       - name: Analyze
         run: flutter analyze

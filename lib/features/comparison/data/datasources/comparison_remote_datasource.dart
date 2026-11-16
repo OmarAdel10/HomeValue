@@ -80,18 +80,26 @@ class ComparisonRemoteDataSource {
 
   Future<ModelComparisonModel> fetchModelComparison() async {
     validation.assertAllowedHost(baseUrl);
-    final trimmedBase = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final baseUri =
-        Uri.parse('$trimmedBase${AppConstants.modelComparisonEndpoint}');
-    final resolvedHost = await _resolveAndValidateHost(baseUri.host);
+    final baseUri = Uri.parse(baseUrl);
+    // Rebuild from components: string concatenation pushes the endpoint into
+    // the query string for bases like 'http://host:8000?x=1' (GET lands on
+    // '/' and the request silently fails), and Uri.replace(query: null)
+    // keeps the existing query in Dart. A fresh Uri() drops query/fragment
+    // and normalizes any number of trailing slashes in the base path.
+    final basePath = baseUri.path.replaceAll(RegExp(r'/+$'), '');
+    final requestUri = Uri(
+      scheme: baseUri.scheme,
+      host: baseUri.host,
+      port: baseUri.port == 0 ? null : baseUri.port,
+      path: '$basePath${AppConstants.modelComparisonEndpoint}',
+    );
+    final resolvedHost = await _resolveAndValidateHost(requestUri.host);
     // https keeps the original hostname so TLS SNI and certificate-name
     // verification use the domain certificate; http pins to the validated IP
     // so the client cannot re-resolve to a private address (DNS rebinding).
-    final uri = baseUri.scheme == 'https'
-        ? baseUri
-        : baseUri.replace(host: resolvedHost);
+    final uri = requestUri.scheme == 'https'
+        ? requestUri
+        : requestUri.replace(host: resolvedHost);
     // Explicit request with redirects disabled: package:http follows 3xx by
     // default, which would contact a redirect target before rejectRedirect
     // could see it (redirect-based SSRF).

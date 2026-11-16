@@ -7,9 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsLocalDataSource {
   static const String _serverUrlKey = 'server_url';
 
-  /// Delegates to the shared SSRF allowlist in `lib/core/validation.dart`.
-  static bool isAllowedHost(String host) => validation.isAllowedHost(host);
-
   /// Delegates to the shared URL validator in `lib/core/validation.dart`.
   static Future<void> validateServerUrl(String serverUrl) async =>
       validation.validateServerUrl(serverUrl);
@@ -54,7 +51,7 @@ class SettingsLocalDataSource {
     if (uri == null || uri.host.isEmpty) {
       return true; // malformed or empty host: fail closed
     }
-    return !isAllowedHost(uri.host);
+    return !validation.isAllowedHost(uri.host);
   }
 
   Future<AppSettings> getSettings() async {

@@ -92,6 +92,11 @@ bool isAllowedHost(String host) {
     if (bytes.length == 16 && bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) {
       return false; // fec0::/10 deprecated site-local
     }
+    // RFC 4291 link-local is fe80::/10 (fe80-febf). The SDK's isLinkLocal
+    // flag only covers fe8x, so the rest of the /10 is blocked explicitly.
+    if (bytes.length == 16 && bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) {
+      return false; // fe80::/10 link-local (fe80-febf)
+    }
     // Block ALL IPv4-compatible IPv6 (::a.b.c.d, including ::127.0.0.1)
     // regardless of the embedded IPv4 address (RFC 4291 deprecated format).
     if (bytes.length == 16 &&
@@ -117,9 +122,9 @@ bool isAllowedHost(String host) {
     // (2002::/16, embedded IPv4 in bytes 2-5), RFC 6052
     // (64:ff9b::/96, embedded IPv4 in bytes 12-15), SIIT
     // (0:ffff:0:0/96, selector bytes 8-9 = 0xffff, embedded IPv4 in bytes
-    // 12-15) and ISATAP (interface-ID marker 00:00:5e:fe at bytes 4-7,
-    // embedded IPv4 in bytes 8-11). Documentation range 2001:db8::/32 is not
-    // a transition form and is allowed.
+    // 12-15) and ISATAP (interface-ID marker 0200:5efe with the 5efe tail
+    // on bytes 10-11, embedded IPv4 in bytes 12-15). Documentation range
+    // 2001:db8::/32 is not a transition form and is allowed.
     if (bytes.length == 16) {
       String? embedded;
       final is6to4 = bytes[0] == 0x20 && bytes[1] == 0x02;
@@ -244,8 +249,10 @@ Future<void> validateServerUrl(String serverUrl) async {
           throw ArgumentError('Resolved host is blocked');
         }
       }
-    } on ArgumentError {
-      rethrow;
+    } on SocketException {
+      // DNS transport failure must fail closed as an ArgumentError instead
+      // of escaping as a raw SocketException.
+      throw ArgumentError('DNS lookup failed');
     }
   }
 }
@@ -262,6 +269,12 @@ void assertAllowedHost(String url) {
   // Reject empty host (e.g. http://:8000/path).
   if (uri.host.isEmpty) {
     throw ArgumentError('Invalid URL');
+  }
+  // Only web schemes reach the request builders; ftp:/data:/etc. would pass
+  // host checks but be rejected later by the http package — fail early.
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    throw ArgumentError('Unsupported URL scheme');
   }
   // Reject hosts containing whitespace or control characters.
   if (uri.host.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {

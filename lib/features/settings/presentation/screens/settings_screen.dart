@@ -38,8 +38,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _lastSettings = state.settings;
           _urlController.text = state.settings.serverUrl;
         } else if (state is SettingsFailure && !state.isLoadFailure) {
+          // Show the state's message (already leak-safe) so retrain
+          // suspension ('Auto-retrain suspended after 5 consecutive
+          // failures') surfaces verbatim instead of a generic string.
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not update settings')),
+            SnackBar(content: Text(state.message)),
           );
         }
       },
