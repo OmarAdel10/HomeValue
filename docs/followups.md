@@ -136,3 +136,17 @@ Plane project `HOME` (HomeValue).
   allowlist treats `127.1` as a non-4-part name (DNS lookup decides), and the
   trailing-dot strip covers `localhost.`; verify platform resolvers cannot map
   these to loopback in `validateServerUrl`.
+
+## HOME-39 Round 16 deferred findings (2026-11-16)
+
+- Extract documented `settle(async)` helper to replace the repeated
+  `flushMicrotasks` ritual in bloc tests; make the retrain response
+  deadline injectable (mirror the datasource `timeout` seam).
+- Product decision: zero-delay immediate retrain when saving a first
+  server URL with auto-retrain enabled (may be intended first-config
+  UX; confirm with product).
+- Extend di_test for the new datasource wiring (baseUrlProvider
+  closure) and assert `AppConstants.apiBaseUrl` value.
+- Info: retrain success-POST followed by a failed
+  `updateLastAutoRetrain` persist is counted as a retrain failure
+  (conservative; classify or comment).
