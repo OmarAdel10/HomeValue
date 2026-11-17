@@ -259,8 +259,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       }
     }
     final delay = nextRun == null
-        ? Duration
-            .zero // No prior retrain: initial retrain via zero-delay timer.
+        ? (settings.initialRetrainDelay ?? const Duration(minutes: 5))
         : (!nextRun.isAfter(now) ? Duration.zero : nextRun.difference(now));
     _armTimer(delay);
   }

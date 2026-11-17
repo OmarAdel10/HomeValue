@@ -14,10 +14,12 @@ class SettingsLocalDataSource {
   static const String _themeModeKey = 'theme_mode';
   static const String _autoRetrainKey = 'auto_retrain';
   static const String _lastAutoRetrainKey = 'last_auto_retrain_at';
+  static const String _initialRetrainDelayKey = 'initial_retrain_delay_millis';
 
   static const String _defaultServerUrl = 'http://example.com:8000';
   static const int _defaultThemeMode = 0; // ThemeMode.system
   static const bool _defaultAutoRetrain = false;
+  static const int _defaultInitialRetrainDelayMillis = 300000; // 5 minutes
 
   final SharedPreferences _prefs;
 
@@ -102,6 +104,14 @@ class SettingsLocalDataSource {
         lastAutoRetrainAt = null;
       }
     }
+    Duration? initialRetrainDelay;
+    final delayMillis = _prefs.getInt(_initialRetrainDelayKey);
+    if (delayMillis != null) {
+      initialRetrainDelay = Duration(milliseconds: delayMillis);
+    } else {
+      initialRetrainDelay =
+          Duration(milliseconds: _defaultInitialRetrainDelayMillis);
+    }
 
     final themeMode =
         themeModeIndex >= 0 && themeModeIndex < ThemeMode.values.length
@@ -113,6 +123,7 @@ class SettingsLocalDataSource {
       themeMode: themeMode,
       autoRetrain: autoRetrain,
       lastAutoRetrainAt: lastAutoRetrainAt,
+      initialRetrainDelay: initialRetrainDelay,
     );
   }
 
