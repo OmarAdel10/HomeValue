@@ -30,6 +30,14 @@ final List<(String, int)> blockedIpv4Cidrs = <(String, int)>[
   ('240.0.0.0', 4),
 ];
 
+/// A user-configured server URL was rejected by the SSRF host policy.
+/// Typed marker so callers (bloc failure mapping, datasource load logging)
+/// can recognize policy blocks without string-matching error text, which
+/// drifts as validator messages evolve.
+class ServerUrlBlockedError extends ArgumentError {
+  ServerUrlBlockedError([super.message = 'Blocked host']);
+}
+
 /// Injectable DNS resolver for [validateServerUrl]. Defaults to
 /// [InternetAddress.lookup] in production; tests can stub this to avoid
 /// live network/DNS calls.
@@ -49,9 +57,16 @@ bool isAllowedHost(String host) {
   final lower = host.toLowerCase();
   // Strip IPv6 zone ID (e.g., fe80::1%eth0 -> fe80::1) to prevent bypass.
   final noZone = lower.split('%').first;
-  // Strip trailing dot (e.g., localhost. -> localhost) to prevent bypass.
-  final stripped =
-      noZone.endsWith('.') ? noZone.substring(0, noZone.length - 1) : noZone;
+  // Strip ALL trailing dots (e.g., localhost.. -> localhost) so multi-dot
+  // suffixes cannot dodge the loopback checks; an empty remnant is blocked
+  // below.
+  var stripped = noZone;
+  while (stripped.endsWith('.')) {
+    stripped = stripped.substring(0, stripped.length - 1);
+  }
+  if (stripped.isEmpty) {
+    return false; // degenerate all-dots host: fail closed
+  }
 
   // Block loopback hostname explicitly (not caught by IP parsing).
   if (stripped == 'localhost' || stripped.endsWith('.localhost')) {
@@ -61,17 +76,18 @@ bool isAllowedHost(String host) {
   // Try to parse as an IP address.
   final address = InternetAddress.tryParse(stripped);
   if (address == null) {
-    // Not a valid IP. If it looks like a malformed IPv4 (4 dot-separated
-    // parts), block it. Block alternative IPv4 notations (bare integer like
-    // 2130706433, or hex like 0x7f000001) that bypass strict dotted-decimal
-    // parsing. Otherwise treat as a domain name and allow it.
-    // Only classify 4-part input as malformed IPv4 when it is numeric
-    // address-shaped (e.g. 999.1.1.1). Valid multi-label DNS names such as
-    // api.prod.example.com must proceed to DNS validation.
+    // Not a valid IP. Block any all-numeric 4-part host: only strict
+    // dotted-decimal IPv4 (validated above via InternetAddress parsing) is
+    // acceptable, so octal shorthand (0177.0.0.1), overlong octets
+    // (1234.1.1.1) and out-of-range forms must not fall through to the
+    // "domain name" branch. Block alternative IPv4 notations (bare integer
+    // like 2130706433, or hex like 0x7f000001) that bypass strict
+    // dotted-decimal parsing. Otherwise treat as a domain name and allow it.
+    // Valid multi-label DNS names such as api.prod.example.com proceed to
+    // DNS validation.
     final parts = stripped.split('.');
-    if (parts.length == 4 &&
-        parts.every((p) => RegExp(r'^\d{1,3}$').hasMatch(p))) {
-      return false; // Malformed numeric IPv4: blocked
+    if (parts.length == 4 && parts.every((p) => RegExp(r'^\d+$').hasMatch(p))) {
+      return false; // Malformed numeric IPv4 (any octet length): blocked
     }
     if (RegExp(r'^\d+$').hasMatch(stripped) ||
         RegExp(r'^0x[0-9a-fA-F]+$').hasMatch(stripped)) {
@@ -230,7 +246,7 @@ Uri validateServerUrlSync(String serverUrl) {
     throw ArgumentError('Unsupported scheme: $scheme (expected http or https)');
   }
   if (!isAllowedHost(uri.host)) {
-    throw ArgumentError('Blocked host');
+    throw ServerUrlBlockedError('Blocked host');
   }
   return uri;
 }
@@ -258,7 +274,7 @@ Future<void> validateServerUrl(String serverUrl) async {
       }
       for (final ip in resolved) {
         if (!isAllowedHost(ip.address)) {
-          throw ArgumentError('Resolved host is blocked');
+          throw ServerUrlBlockedError('Resolved host is blocked');
         }
       }
     } on SocketException {
@@ -297,7 +313,7 @@ void assertAllowedHost(String url) {
     throw ArgumentError('Invalid URL');
   }
   if (!isAllowedHost(uri.host)) {
-    throw ArgumentError('Blocked host: SSRF protection');
+    throw ServerUrlBlockedError('Blocked host: SSRF protection');
   }
 }
 

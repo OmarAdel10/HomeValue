@@ -35,6 +35,13 @@ class _DnsUnavailableError extends ArgumentError {
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository repository;
   final Duration retrainInterval;
+
+  /// Deadline for a single retrain POST. Defaults to 10 minutes — the
+  /// pre-fix behaviour — because the backend /train endpoint runs the full
+  /// training pipeline synchronously; a short prediction-class timeout here
+  /// would classify every slow-but-successful retrain as a failure and
+  /// suspend auto-retrain after 5 windows.
+  final Duration retrainTimeout;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
   final DateTime Function() _now;
@@ -58,6 +65,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     required this.repository,
     http.Client? httpClient,
     this.retrainInterval = const Duration(hours: 24),
+    this.retrainTimeout = const Duration(minutes: 10),
     DateTime Function()? now,
     Future<List<InternetAddress>> Function(String)? dnsLookup,
   })  : _httpClient = httpClient ?? _createClient(),
@@ -74,6 +82,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
 
   @override
   Future<void> close() {
+    // Invalidate any in-flight retrain (e.g. one still awaiting DNS) so it
+    // can neither POST on a closed bloc nor persist afterwards.
+    _retrainGeneration++;
     _autoRetrainTimer?.cancel();
     _autoRetrainTimer = null;
     if (_ownsHttpClient) {
@@ -173,8 +184,17 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
           emit(
               _failure(Exception('Auto-retrain failed'), isLoadFailure: false));
         } else if (outcome == _RetrainOutcome.skippedBlocked) {
-          emit(_failure(Exception('Server URL blocked by SSRF rules'),
+          // Pass the typed blocked error so _failure maps it to the policy
+          // message (a generic Exception would downgrade it to the generic
+          // failure text).
+          emit(_failure(ServerUrlBlockedError('Blocked host'),
               isLoadFailure: false));
+        } else if (outcome == _RetrainOutcome.skippedInFlight) {
+          // A stale attempt already owns the retrain slot; if it ends
+          // classified as skippedBlocked its finally-block never reschedules,
+          // which would leave auto-retrain enabled with no timer. Re-arm the
+          // (idempotent) schedule so the feature stays alive.
+          _scheduleNextRetrain();
         }
       }
     } catch (e) {
@@ -189,8 +209,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     log('Settings operation failed: ${error.runtimeType}');
     // A persist-time SSRF rejection is user-actionable (they entered a
     // private/internal URL), so surface the policy reason without leaking
-    // the URL itself.
-    final blocked = error is ArgumentError && error.message == 'Blocked host';
+    // the URL itself. Match on the typed marker error — string-matching
+    // error text drifts as validator messages evolve.
+    final blocked = error is ServerUrlBlockedError;
     return SettingsFailure(
       blocked ? 'Server URL blocked by policy' : 'Operation failed',
       isLoadFailure: isLoadFailure,
@@ -315,7 +336,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       }
       for (final address in resolved) {
         if (!isAllowedHost(address.address)) {
-          throw ArgumentError('Resolved host is blocked');
+          throw ServerUrlBlockedError('Resolved host is blocked');
         }
       }
       // Prefer IPv4 so an unreachable IPv6 address does not strand requests.
@@ -373,10 +394,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         return _RetrainOutcome.skippedBlocked;
       }
       uri = await _trainUri(settings.serverUrl);
-      // _trainUri above already validates serverUrlBlocked/SSRF rules via
-      // validateServerUrl + resolved-IP revalidation + IP pinning. Any blocked
-      // hostname throws before we reach the POST, so no separate hostname-only
-      // re-check is needed here (it cannot catch domain-name rebinding).
+      // _trainUri already enforced the SSRF rules via validateServerUrlSync
+      // (sync allowlist) plus resolved-IP revalidation and IP pinning; the
+      // earlier serverUrlBlocked gate above catches hostname-only blocks
+      // before DNS. Any blocked hostname throws before we reach the POST, so
+      // no separate hostname-only re-check is needed here (it cannot catch
+      // domain-name rebinding).
       // Invalidate work whose enabling condition disappeared while DNS was
       // pending (user disabled auto-retrain mid-flight); the generation also
       // prevents a later re-enable from reviving stale work.
@@ -393,7 +416,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       final response = await _httpClient
           .send(request)
           .then(http.Response.fromStream)
-          .timeout(AppConstants.apiTimeout);
+          .timeout(retrainTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw http.ClientException('retrain rejected');
       }

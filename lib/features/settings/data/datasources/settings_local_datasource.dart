@@ -26,15 +26,31 @@ class SettingsLocalDataSource {
   /// Invalidated whenever a different URL is persisted.
   String? _lastValidatedUrl;
 
+  /// URLs whose validation attempt already ran at least once and did NOT
+  /// succeed (e.g. DNS offline). The negative result is cached so a DNS
+  /// outage cannot re-run a 10s lookup on every getSettings() read — every
+  /// mutation handler awaits getSettings(), so uncached failures would stall
+  /// each theme/retrain persist by the full DNS timeout. Policy enforcement
+  /// is unaffected: blocked hosts stay fail-closed at request time via
+  /// request-time revalidation.
+  final Set<String> _validationFailed = <String>{};
+
   SettingsLocalDataSource(this._prefs);
 
-  /// Validates [serverUrl] unless an identical URL already passed validation.
+  /// Validates [serverUrl] unless an identical URL already passed validation
+  /// or a previous attempt for it already failed (negative cache).
   Future<void> _validateCached(String serverUrl) async {
-    if (_lastValidatedUrl == serverUrl) {
+    if (_lastValidatedUrl == serverUrl ||
+        _validationFailed.contains(serverUrl)) {
       return;
     }
-    await validateServerUrl(serverUrl);
-    _lastValidatedUrl = serverUrl;
+    try {
+      await validateServerUrl(serverUrl);
+      _lastValidatedUrl = serverUrl;
+    } on Object {
+      _validationFailed.add(serverUrl);
+      rethrow;
+    }
   }
 
   /// Synchronous read used by the HTTP layer before each request.
@@ -62,8 +78,11 @@ class SettingsLocalDataSource {
     // serverUrlBlocked).
     try {
       await _validateCached(serverUrl);
-    } on ArgumentError {
+    } on validation.ServerUrlBlockedError {
       log('Blocked server URL at load; retraining will fail closed');
+    } on ArgumentError {
+      // A malformed URL or a DNS lookup that failed as ArgumentError.
+      log('Server URL rejected at load; retraining will fail closed');
     } on Exception catch (e) {
       // DNS offline/timeout during a local read must not prevent returning
       // persisted preferences (theme/auto-retrain updates read via
