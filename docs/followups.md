@@ -175,3 +175,42 @@ Plane project `HOME` (HomeValue).
   (workflow_dispatch only) plus `homevalue-cd.yml` (tags). Consolidation
   needs a user decision on which definition to keep; per policy only CI may
   run on feature branches and CD belongs on `master` only.
+
+## HOME-39 Round 19 deferred findings (2026-11-17)
+
+- **https socket-level pinning via connectionFactory** (Medium) — tracked
+  since Round 14; needs a TLS test rig before the datasources/bloc can pin
+  at the socket layer for https bases (currently hostname-only for https).
+- **Duplicate CI workflows** (Low, user decision) — same as Round 17 row 7;
+  awaiting user choice on consolidation.
+- **Extract shared `resolveAndPinHost` helper** (Low) — Round 15/17 M3
+  refactor; duplicated resolve/validate/pin logic in bloc + 2 datasources.
+- **Mutable global `validation.dnsLookup` seam** (Low) — Round 17 row 12;
+  consider zone-scoped or injected resolver.
+- **Teredo /32 + IPv6 tunnel ranges** (Low) — Round 17 row 12; not expanded.
+- **prediction/comparison bloc `e.toString()` leakage** (Low) — tracked
+  since Round 14: bloc error paths may surface raw exception text in the
+  prediction/comparison UIs (settings bloc is leak-safe already).
+- **304 redirect handling** (Info) — validation `rejectRedirect` treats 304
+  as a 3xx rejection; harmless but semantically a cache response.
+- **3xx consumes a retrain attempt** (Info) — a redirect response reaches
+  the POST path (followRedirects=false) and is rejected as failed,
+  consuming the consecutive-failure budget; consider classifying as a
+  policy block.
+- **G6-G12 defensive tests** (Info) — QA's residual low-priority test ideas
+  (defensive branches in the retrain loop) not worth the churn now.
+- **DI dispose hook + `apiBaseUrl` assert** (Info) — di_test never disposes
+  datasource clients (app-lifetime singletons OK) and the
+  `AppConstants.apiBaseUrl` value assertion remains unimplemented (Round
+  16 note carried forward).
+- **Default-URL product decision** (Info) — shipped default
+  `http://example.com:8000` is a placeholder; confirm the real default.
+- **Coverage Lows B-G5..G9** — screen validator message verbatim, removed
+  snackbar absence, updateServerUrl trim, predictBatch 500,
+  validateServerUrlSync space/tab; low-value assertions deferred.
+- **Bloc suspension message verbatim assert** (Low) — bloc-level suspension
+  test asserts `contains('suspended')`; the verbatim string is only
+  asserted at the UI level. Tighten if the message becomes contractual.
+- **DI-injected comparison client never closed** (Info) — datasource
+  injected via DI is an app-lifetime singleton; closing is unnecessary,
+  noted for dispose-hook work above.
