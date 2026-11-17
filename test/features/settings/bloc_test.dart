@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:home_value/core/validation.dart' as validation;
 import 'package:home_value/features/settings/presentation/bloc/settings_bloc.dart';
 import 'package:home_value/features/settings/presentation/bloc/settings_event.dart';
 import 'package:home_value/features/settings/presentation/bloc/settings_state.dart';
@@ -541,7 +542,7 @@ void main() {
 
     test('surfaces a persist-time blocked URL as a policy message', () async {
       when(() => mockRepository.updateServerUrl(any()))
-          .thenThrow(ArgumentError('Blocked host'));
+          .thenThrow(validation.ServerUrlBlockedError('Blocked host'));
       final bloc = SettingsBloc(
         repository: mockRepository,
         dnsLookup: (host) async =>
@@ -989,12 +990,12 @@ void main() {
     });
 
     test('treats a redirect as a rejected retrain', () {
+      final followFlags = <bool>[];
       fakeAsync((async) {
         final requests = <http.Request>[];
         final redirectingClient = MockClient((request) async {
           requests.add(request);
-          expect(request.followRedirects, isFalse,
-              reason: 'redirects must never be followed (SSRF)');
+          followFlags.add(request.followRedirects);
           return http.Response('', 302);
         });
         final bloc = SettingsBloc(
@@ -1022,6 +1023,11 @@ void main() {
         bloc.close();
         async.flushMicrotasks();
       });
+      // Assert after the fakeAsync body: exceptions thrown inside a MockClient
+      // handler are swallowed by the catch-all error path, so the inline
+      // assertion would never fail the test.
+      expect(followFlags, everyElement(isFalse),
+          reason: 'redirects must never be followed (SSRF)');
     });
 
     test('records success for a 204 response', () {
@@ -1274,6 +1280,10 @@ void main() {
         bloc.add(const ToggleAutoRetrain(true));
         async.flushMicrotasks();
         expect(bloc.state, isA<SettingsFailure>());
+        // The typed block error maps to the policy message, not the generic
+        // 'Operation failed' fallback.
+        expect((bloc.state as SettingsFailure).message,
+            'Server URL blocked by policy');
         expect(recorder.requests, isEmpty);
 
         bloc.close();
@@ -1281,14 +1291,16 @@ void main() {
       });
     });
 
-    test('DNS failure triggers skippedBlocked with no retrain', () {
+    test('non-socket resolver error fails closed as a policy block', () {
       fakeAsync((async) {
         final failingRequests = <http.Request>[];
         final failingClient = MockClient((request) async {
           failingRequests.add(request);
           throw http.ClientException('backend down');
         });
-        // dnsLookup throws -> _trainUri fail-closed -> skippedBlocked.
+        // A non-SocketException resolver error is treated as a policy block
+        // (skippedBlocked), not a transient outage: no POST, no window
+        // consumption, timer keeps the normal schedule.
         final bloc = SettingsBloc(
           repository: mockRepository,
           httpClient: failingClient,
@@ -1876,5 +1888,361 @@ void main() {
         expect(requests, hasLength(1));
       });
     });
+
+    test('toggle on fires an overdue retrain and surfaces its failure', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        when(() => mockRepository.updateAutoRetrain(true)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: true),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const ToggleAutoRetrain(true));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        // The toggle path awaits the retrain: a failed attempt must surface
+        // as a (non-load) failure instead of failing silently.
+        expect(bloc.state, isA<SettingsFailure>());
+        final failure = bloc.state as SettingsFailure;
+        expect(failure.isLoadFailure, isFalse);
+        expect(failure.message, 'Operation failed');
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+        expect(failingRequests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('retrain timeout defaults to ten minutes, not the API timeout', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final gate = Completer<http.Response>();
+        final gatedClient = MockClient((request) async {
+          requests.add(request);
+          return gate.future;
+        });
+        when(() => mockRepository.updateAutoRetrain(true)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: true),
+        );
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: gatedClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const ToggleAutoRetrain(true));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        // The retrain POST is in flight, parked on the gated client.
+        expect(requests, hasLength(1));
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        // 31s must NOT time out: the retrain timeout is not the 30s API
+        // timeout (that regression would suspend retraining on every slow
+        // backend /train run).
+        async.elapse(const Duration(seconds: 31));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        // At the 10-minute default the attempt times out and the toggle path
+        // surfaces the failure.
+        async.elapse(const Duration(minutes: 10));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        expect((bloc.state as SettingsFailure).isLoadFailure, isFalse);
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('LoadSettings grants a fresh failure budget after suspension', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(1));
+
+        // Burn the cap to reach suspension.
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        expect((bloc.state as SettingsFailure).message, contains('suspended'));
+
+        // A reload resets the consecutive-failure counter: the next failure
+        // is attempt 1 again, not an immediate re-suspension.
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(6));
+        // Attempt 6 failed on the timer path, which emits no state: still
+        // the SettingsLoaded from the reload. A stale counter would have
+        // re-suspended here instead.
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('correcting a blocked URL re-arms retraining', () {
+      fakeAsync((async) {
+        when(() => mockRepository.serverUrlBlocked).thenReturn(true);
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: recorder.client,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 6; i++) {
+          async.flushMicrotasks();
+        }
+
+        // Blocked URL: no POST, and skippedBlocked leaves no timer behind.
+        expect(recorder.requests, isEmpty);
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+
+        // Correcting the URL must restore scheduling.
+        when(() => mockRepository.serverUrlBlocked).thenReturn(false);
+        when(() => mockRepository.getSettings()).thenAnswer(
+          (_) async =>
+              enabledSettings.copyWith(serverUrl: 'http://example.com:9000'),
+        );
+        when(() => mockRepository.updateServerUrl(any())).thenAnswer(
+          (invocation) async => enabledSettings.copyWith(
+            serverUrl: invocation.positionalArguments.first as String,
+          ),
+        );
+        bloc.add(const UpdateServerUrl('http://example.com:9000'));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        // The re-armed schedule is overdue (no successful attempt yet), so
+        // the next elapsed window fires the retrain against the new URL.
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 6; i++) {
+          async.flushMicrotasks();
+        }
+        expect(recorder.requests, hasLength(1));
+        // HTTP bases pin to the resolved IP (8.8.8.8 from DNS stub).
+        expect(recorder.requests.first.url.host, '8.8.8.8');
+        expect(recorder.requests.first.url.port, 9000);
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('bloc close never closes an injected client', () {
+      fakeAsync((async) {
+        final trackingClient = _CloseTrackingClient();
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: trackingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 6; i++) {
+          async.flushMicrotasks();
+        }
+        // The injected client was used for the retrain and it succeeded.
+        expect(trackingClient.sentRequests, hasLength(1));
+        verify(() => mockRepository.updateLastAutoRetrain(any())).called(1);
+
+        bloc.close();
+        async.flushMicrotasks();
+
+        // The bloc must not dispose a client it does not own.
+        expect(trackingClient.closeCount, 0);
+        trackingClient.close();
+      });
+    });
+
+    test('a retrain pending on DNS cannot POST after close', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final dnsCompleter = Completer<List<InternetAddress>>();
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) => dnsCompleter.future,
+          retrainInterval: const Duration(hours: 24),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        // DNS lookup is pending; no POST yet.
+        expect(requests, isEmpty);
+
+        // Close while DNS is in flight: the generation bump must invalidate
+        // the pending attempt so it can never reach the POST or persist a
+        // success timestamp for a closed bloc.
+        bloc.close();
+        async.flushMicrotasks();
+
+        dnsCompleter.complete(<InternetAddress>[InternetAddress('8.8.8.8')]);
+        for (var i = 0; i < 8; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, isEmpty);
+        verifyNever(() => mockRepository.updateLastAutoRetrain(any()));
+      });
+    });
+
+    test('re-enabling during a DNS outage emits only SettingsLoaded', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        var dnsDown = true;
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) async {
+            if (dnsDown) {
+              throw const SocketException('DNS server unreachable');
+            }
+            return <InternetAddress>[InternetAddress('8.8.8.8')];
+          },
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        // Initial attempt hits the outage: counted, rescheduled, no POST.
+        expect(requests, isEmpty);
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        // Toggle off, let the window lapse, then re-enable while the outage
+        // persists: the enable path must not surface a failure and must keep
+        // the schedule armed.
+        when(() => mockRepository.updateAutoRetrain(false)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: false),
+        );
+        when(() => mockRepository.updateAutoRetrain(true)).thenAnswer(
+          (_) async => enabledSettings.copyWith(autoRetrain: true),
+        );
+        bloc.add(const ToggleAutoRetrain(false));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        advance(async, const Duration(hours: 1));
+        bloc.add(const ToggleAutoRetrain(true));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+
+        // No failure surfaced by the enable path during the outage.
+        expect(bloc.state, isA<SettingsLoaded>());
+        expect(bloc.state, isNot(isA<SettingsFailure>()));
+
+        // DNS recovers: the next window fires the retrain.
+        dnsDown = false;
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
   });
+}
+
+class _CloseTrackingClient extends http.BaseClient {
+  final List<http.BaseRequest> sentRequests = <http.BaseRequest>[];
+  int closeCount = 0;
+
+  late final http.Client _inner = MockClient((request) async {
+    return http.Response('{"status": "ok"}', 200);
+  });
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    sentRequests.add(request);
+    return _inner.send(request);
+  }
+
+  @override
+  void close() {
+    closeCount++;
+  }
 }

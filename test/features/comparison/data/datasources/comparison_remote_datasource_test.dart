@@ -199,6 +199,47 @@ void main() {
       expect(captured!.followRedirects, isFalse);
     });
 
+    test('empty DNS result fails closed without sending a request', () async {
+      var sent = 0;
+      final client = MockClient((request) async {
+        sent++;
+        return http.Response('[]', 200);
+      });
+      validation.dnsLookup = (host) async => <InternetAddress>[];
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'http://api.example.com:8000',
+      );
+      await expectLater(
+        datasource.fetchModelComparison(),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(sent, 0);
+    });
+
+    test('prefers IPv4 when DNS returns IPv6 and IPv4 addresses', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '[{"model_name":"m","rmse":1.0,"mae":0.5,"r2":0.9,"cv_std":0.1}]',
+          200,
+        );
+      });
+      validation.dnsLookup = (host) async => <InternetAddress>[
+            InternetAddress('2001:db8::1'),
+            InternetAddress('8.8.8.8'),
+          ];
+      final datasource = ComparisonRemoteDataSource(
+        client: client,
+        baseUrl: 'http://api.example.com:8000',
+      );
+      await datasource.fetchModelComparison();
+      expect(captured, isNotNull);
+      // http bases pin the connection to the (IPv4-first) resolved address.
+      expect(captured!.url.host, '8.8.8.8');
+    });
+
     test('DNS timeout fails closed with ArgumentError', () async {
       final never = Completer<List<InternetAddress>>();
       validation.dnsLookup = (host) => never.future;

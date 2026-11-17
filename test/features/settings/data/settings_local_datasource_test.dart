@@ -91,6 +91,40 @@ void main() {
     expect(settings.serverUrl, 'http://example.com:8000');
   });
 
+  test('a failed validation is negatively cached for the same URL', () async {
+    // Every mutation handler awaits getSettings(); without a negative cache
+    // a DNS outage would re-run the full 10s lookup on every persist.
+    await prefs.setString('server_url', 'http://example.com:8000');
+    var dnsCalls = 0;
+    validation.dnsLookup = (host) async {
+      dnsCalls++;
+      throw const SocketException('DNS offline');
+    };
+
+    // First read: the validation attempt runs and fails, but the load still
+    // returns persisted settings (fail-open at load, fail-closed at request).
+    final first = await dataSource.getSettings();
+    expect(first.serverUrl, 'http://example.com:8000');
+    expect(dnsCalls, 1);
+
+    // Second read must not re-run the lookup for the same URL.
+    final second = await dataSource.getSettings();
+    expect(second.serverUrl, 'http://example.com:8000');
+    expect(dnsCalls, 1);
+
+    // updateServerUrl validates live (outside the read cache), so the
+    // outage fails the persist and the URL stays unchanged; the failed
+    // attempt does not corrupt the read path.
+    await expectLater(
+      dataSource.updateServerUrl('http://example.org:9000'),
+      throwsA(isArgumentError),
+    );
+    expect(dnsCalls, 2);
+    final third = await dataSource.getSettings();
+    expect(third.serverUrl, 'http://example.com:8000');
+    expect(dnsCalls, 2);
+  });
+
   test('reads a stored retrain timestamp', () async {
     final stored = DateTime(2026, 10, 27, 12);
     SharedPreferences.setMockInitialValues(<String, Object>{

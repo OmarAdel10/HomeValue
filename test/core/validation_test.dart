@@ -106,6 +106,28 @@ void main() {
       expect(isAllowedHost('api.prod.localhost'), isFalse);
     });
 
+    test('strips ALL trailing dots before the localhost check', () {
+      // A single trailing dot was already handled; multiple dots must not
+      // let 'localhost..' fall through as a domain.
+      expect(isAllowedHost('localhost..'), isFalse);
+      expect(isAllowedHost('localhost...'), isFalse);
+      expect(isAllowedHost('sub.localhost.'), isFalse);
+      expect(isAllowedHost('...'), isFalse);
+      // A fully-qualified public domain keeps working.
+      expect(isAllowedHost('api.prod.example.com.'), isTrue);
+      expect(isAllowedHost('api.prod.example.com'), isTrue);
+    });
+
+    test('blocks non-dotted-quad all-numeric hosts (octal shorthand)', () {
+      // '0177.0.0.1' parses as 127.0.0.1 in C-style octal interpretation;
+      // overlong octets ('1234') are not dotted-quad IPv4. Both must be
+      // blocked rather than allowed through as domain names.
+      expect(isAllowedHost('0177.0.0.1'), isFalse);
+      expect(isAllowedHost('1234.1.1.1'), isFalse);
+      // A real dotted-quad public IP is unaffected.
+      expect(isAllowedHost('8.8.8.8'), isTrue);
+    });
+
     test('blocks remaining special-use IPv4 ranges', () {
       // CGNAT 100.64/10
       expect(isAllowedHost('100.64.0.1'), isFalse);
@@ -384,6 +406,23 @@ void main() {
       );
     });
 
+    test('maps a DNS transport failure to an ArgumentError', () {
+      // A SocketException from the resolver must surface as the dedicated
+      // ArgumentError, never escape as a raw SocketException (the bloc
+      // relies on this mapping for transient-outage classification).
+      dnsLookup = (host) async => throw const SocketException('DNS down');
+      expect(
+        () async => validateServerUrl('http://example.com/train'),
+        throwsA(
+          isArgumentError.having(
+            (e) => e.message,
+            'message',
+            'DNS lookup failed',
+          ),
+        ),
+      );
+    });
+
     test('fail-closed when DNS returns no addresses', () {
       dnsLookup = (host) async => <InternetAddress>[];
       expect(
@@ -469,6 +508,19 @@ void main() {
     test('rejects blocked host', () {
       expect(
         () => validateServerUrlSync('http://127.0.0.1:8000'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects trailing-dot loopback and octal shorthand hosts', () {
+      // localhost.. used to survive the single-dot strip; 0177.0.0.1 is
+      // octal shorthand for 127.0.0.1.
+      expect(
+        () => validateServerUrlSync('http://localhost../:8000'),
+        throwsA(isArgumentError),
+      );
+      expect(
+        () => validateServerUrlSync('http://0177.0.0.1:8000'),
         throwsA(isArgumentError),
       );
     });
