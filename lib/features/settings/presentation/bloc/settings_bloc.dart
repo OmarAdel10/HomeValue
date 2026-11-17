@@ -22,7 +22,7 @@ enum _RetrainOutcome {
   skippedInFlight, // already in flight, no attempt
   skippedNotDue, // retrain window not yet elapsed, no attempt
   skippedBlocked, // server URL blocked by SSRF rules, retraining fail-closed
-  skippedUnavailable, // transient DNS outage — rescheduled with backoff
+  skippedUnavailable, // transient DNS outage — rescheduled on the normal window
 }
 
 /// DNS could not be resolved (transport failure or timeout). Distinct from a
@@ -164,6 +164,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
         _autoRetrainTimer?.cancel();
         _autoRetrainTimer = null;
       } else if (!wasEnabled) {
+        // Re-enabling grants a fresh failure budget: without this reset a
+        // post-suspension toggle off→on resumes the counter ('suspended
+        // after 6', 7, ...) instead of giving the user a clean retry.
+        _consecutiveRetrainFailures = 0;
         final outcome = await _triggerRetrain();
         if (outcome == _RetrainOutcome.failed) {
           emit(
@@ -183,8 +187,12 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     // Emit a generic, user-safe message; never leak raw URLs or exception text
     // into UI state or observability. Log the error type for diagnostics only.
     log('Settings operation failed: ${error.runtimeType}');
+    // A persist-time SSRF rejection is user-actionable (they entered a
+    // private/internal URL), so surface the policy reason without leaking
+    // the URL itself.
+    final blocked = error is ArgumentError && error.message == 'Blocked host';
     return SettingsFailure(
-      'Operation failed',
+      blocked ? 'Server URL blocked by policy' : 'Operation failed',
       isLoadFailure: isLoadFailure,
       attempt: _failureCount,
     );
@@ -271,32 +279,16 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   }
 
   Future<Uri> _trainUri(String serverUrl) async {
-    // Sync validation: scheme, host, credentials, hostname allowlist.
-    // (Async DNS resolve + revalidation is done below via stubbable _dnsLookup.)
-    final uri = Uri.tryParse(serverUrl.trim());
-    if (uri == null || !uri.hasAuthority) {
-      throw ArgumentError('Invalid server URL');
-    }
-    if (uri.host.isEmpty) {
-      throw ArgumentError('Invalid server URL');
-    }
-    if (uri.userInfo.isNotEmpty) {
-      throw ArgumentError('Invalid server URL');
-    }
-    final scheme = uri.scheme.toLowerCase();
-    if (scheme != 'http' && scheme != 'https') {
-      throw ArgumentError(
-          'Unsupported scheme: $scheme (expected http or https)');
-    }
-    if (!isAllowedHost(uri.host)) {
-      throw ArgumentError('Blocked host');
-    }
+    // Sync validation (control chars, scheme, host, credentials, hostname
+    // allowlist) is shared with persist-time validateServerUrl so the
+    // request-time checks cannot drift from the save-time checks. Async DNS
+    // resolve + revalidation is done below via stubbable _dnsLookup.
+    final baseUri = validateServerUrlSync(serverUrl);
     // Build the retrain URI: parse once, strip query/fragment and trailing
     // path slashes, then append the train endpoint path. String concatenation
     // would push the endpoint into the query string for URLs like
     // 'http://host:8000?x=1' (POST lands on '/' and the retrain silently
     // fails every window).
-    final baseUri = Uri.parse(serverUrl.trim());
     final basePath = baseUri.path.replaceAll(RegExp(r'/+$'), '');
     // Rebuild from components: Uri.replace(query: null) KEEPS the existing
     // query in Dart, so a saved URL like 'http://host:8000?x=1' would push
@@ -349,7 +341,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       );
     } on SocketException {
       // DNS transport failure is transient: throw the dedicated error so
-      // _triggerRetrain reschedules with backoff instead of silently
+      // _triggerRetrain reschedules on the normal window instead of silently
       // disarming auto-retrain (policy blocks stay ArgumentError).
       throw _DnsUnavailableError('DNS lookup failed');
     }
@@ -412,10 +404,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       return _RetrainOutcome.performed;
     } on ArgumentError catch (e) {
       if (e is _DnsUnavailableError) {
-        // Transient DNS outage: count as a real attempt and reschedule with
-        // backoff. One network blip must never silently and permanently
-        // disarm auto-retrain (the cap eventually surfaces a visible
-        // suspension through RetrainSuspended).
+        // Transient DNS outage: count as a real attempt and reschedule on
+        // the normal retrain window. One network blip must never silently
+        // and permanently disarm auto-retrain (the cap eventually surfaces
+        // a visible suspension through RetrainSuspended).
         log('Auto-retrain skipped: DNS unavailable');
         _consecutiveRetrainFailures++;
         isRealAttempt = true;

@@ -196,12 +196,14 @@ bool _ipv4InBlockedRange(String ip) {
   return false;
 }
 
-/// Validates [serverUrl] before it is persisted: scheme must be http/https
-/// and host must not be private/link-local/metadata. Domain names are
-/// resolved and every resolved IP is re-validated to prevent domain-based
-/// SSRF (e.g. metadata.google.internal resolving to 169.254.169.254).
-/// Throws on invalid input. Fail-closed: any DNS failure throws.
-Future<void> validateServerUrl(String serverUrl) async {
+/// Synchronous validation of [serverUrl]: rejects raw control characters,
+/// malformed URLs, empty hosts, embedded credentials, non-http(s) schemes,
+/// and blocked (private/link-local/metadata) hosts. Returns the parsed URI
+/// of the trimmed input. The async DNS resolve+revalidate lives in
+/// [validateServerUrl]; request-time callers (e.g. the retrain path) use
+/// this function so the two check sets cannot drift apart.
+/// Throws [ArgumentError] on invalid input.
+Uri validateServerUrlSync(String serverUrl) {
   // Reject raw input containing whitespace or control characters before
   // parsing, since Uri.tryParse may normalize or drop them.
   if (serverUrl.contains(RegExp(r'[\s\x00-\x1F\x7F]'))) {
@@ -230,6 +232,16 @@ Future<void> validateServerUrl(String serverUrl) async {
   if (!isAllowedHost(uri.host)) {
     throw ArgumentError('Blocked host');
   }
+  return uri;
+}
+
+/// Validates [serverUrl] before it is persisted: scheme must be http/https
+/// and host must not be private/link-local/metadata. Domain names are
+/// resolved and every resolved IP is re-validated to prevent domain-based
+/// SSRF (e.g. metadata.google.internal resolving to 169.254.169.254).
+/// Throws on invalid input. Fail-closed: any DNS failure throws.
+Future<void> validateServerUrl(String serverUrl) async {
+  final uri = validateServerUrlSync(serverUrl);
   // Resolve+revalidate domain names at persist time to prevent domain-based
   // SSRF (e.g. metadata.google.internal resolving to 169.254.169.254).
   // Literal IPs are already validated by isAllowedHost above.
