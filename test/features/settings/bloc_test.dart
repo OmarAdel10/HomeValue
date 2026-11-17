@@ -32,6 +32,7 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
     ));
     registerFallbackValue(ThemeMode.system);
     registerFallbackValue(DateTime(2026));
@@ -63,12 +64,14 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
     );
 
     const updatedSettings = AppSettings(
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     blocTest<SettingsBloc, SettingsState>(
@@ -228,18 +231,21 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     const enabledDarkSettings = AppSettings(
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     const enabledMovedSettings = AppSettings(
       serverUrl: 'http://example.com:9000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     blocTest<SettingsBloc, SettingsState>(
@@ -575,12 +581,14 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     const enabledDarkSettings = AppSettings(
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.dark,
       autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
     );
 
     DateTime clock() => current;

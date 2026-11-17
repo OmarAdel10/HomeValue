@@ -9,6 +9,7 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
     );
 
     test('defaults uses example.com public URL', () {
@@ -16,6 +17,7 @@ void main() {
       expect(AppSettings.defaults().themeMode, ThemeMode.system);
       expect(AppSettings.defaults().autoRetrain, isFalse);
       expect(AppSettings.defaults().lastAutoRetrainAt, isNull);
+      expect(AppSettings.defaults().initialRetrainDelay, Duration(minutes: 5));
     });
 
     test('copyWith with no changes returns equal settings', () {
@@ -28,6 +30,7 @@ void main() {
       expect(updated.themeMode, settings.themeMode);
       expect(updated.autoRetrain, settings.autoRetrain);
       expect(updated.lastAutoRetrainAt, settings.lastAutoRetrainAt);
+      expect(updated.initialRetrainDelay, settings.initialRetrainDelay);
     });
 
     test('copyWith themeMode', () {
@@ -35,6 +38,7 @@ void main() {
       expect(updated.themeMode, ThemeMode.dark);
       expect(updated.serverUrl, settings.serverUrl);
       expect(updated.autoRetrain, settings.autoRetrain);
+      expect(updated.initialRetrainDelay, settings.initialRetrainDelay);
     });
 
     test('copyWith autoRetrain', () {
@@ -42,6 +46,7 @@ void main() {
       expect(updated.autoRetrain, isTrue);
       expect(updated.serverUrl, settings.serverUrl);
       expect(updated.themeMode, settings.themeMode);
+      expect(updated.initialRetrainDelay, settings.initialRetrainDelay);
     });
 
     test('copyWith lastAutoRetrainAt', () {
@@ -49,6 +54,15 @@ void main() {
       final updated = settings.copyWith(lastAutoRetrainAt: at);
       expect(updated.lastAutoRetrainAt, at);
       expect(updated.serverUrl, settings.serverUrl);
+      expect(updated.initialRetrainDelay, settings.initialRetrainDelay);
+    });
+
+    test('copyWith initialRetrainDelay', () {
+      final updated =
+          settings.copyWith(initialRetrainDelay: Duration(minutes: 10));
+      expect(updated.initialRetrainDelay, Duration(minutes: 10));
+      expect(updated.serverUrl, settings.serverUrl);
+      expect(updated.autoRetrain, settings.autoRetrain);
     });
 
     test('copyWith null lastAutoRetrainAt keeps current value (?? fallback)',
@@ -64,6 +78,7 @@ void main() {
         serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
+        initialRetrainDelay: Duration.zero,
       );
       expect(same.props, settings.props);
       expect(same, settings);
@@ -75,8 +90,15 @@ void main() {
 
     test('props includes lastAutoRetrainAt when set', () {
       final withTime = settings.copyWith(lastAutoRetrainAt: DateTime(2026));
-      expect(withTime.props.length, 4);
-      expect(withTime.props.last, DateTime(2026));
+      expect(withTime.props.length, 5);
+      expect(withTime.props[3], DateTime(2026));
+    });
+
+    test('props includes initialRetrainDelay', () {
+      final withDelay =
+          settings.copyWith(initialRetrainDelay: Duration(minutes: 10));
+      expect(withDelay.props.length, 5);
+      expect(withDelay.props[4], Duration(minutes: 10));
     });
   });
 }

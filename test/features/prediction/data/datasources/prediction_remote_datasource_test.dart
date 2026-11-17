@@ -519,7 +519,8 @@ void main() {
       final client = MockClient((request) async {
         captured = request;
         return http.Response(
-          jsonEncode({'prediction': 450000.0, 'model': 'xgb', 'model_version': '1.0'}),
+          jsonEncode(
+              {'prediction': 450000.0, 'model': 'xgb', 'model_version': '1.0'}),
           200,
         );
       });

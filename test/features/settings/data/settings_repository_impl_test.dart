@@ -16,6 +16,7 @@ void main() {
     serverUrl: 'http://example.com:8000',
     themeMode: ThemeMode.system,
     autoRetrain: false,
+    initialRetrainDelay: Duration.zero,
   );
 
   setUpAll(() {

@@ -21,6 +21,7 @@ void main() {
       serverUrl: 'http://example.com:8000',
       themeMode: ThemeMode.system,
       autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
     ));
     registerFallbackValue(ThemeMode.system);
     registerFallbackValue(DateTime(2026));
@@ -250,6 +251,7 @@ void main() {
         serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: true,
+        initialRetrainDelay: Duration.zero,
       );
 
       when(() => mockRepository.getSettings()).thenAnswer(
@@ -427,6 +429,7 @@ void main() {
         themeMode: ThemeMode.system,
         autoRetrain: true,
         lastAutoRetrainAt: fakeNow.subtract(const Duration(days: 2)),
+        initialRetrainDelay: Duration.zero,
       );
       final failingClient = MockClient(
         (request) async => throw http.ClientException('backend down'),
