@@ -429,7 +429,8 @@ void main() {
     expect(prefs.getBool('auto_retrain'), isTrue);
   });
 
-  test('getSettings uses default initialRetrainDelay when not stored', () async {
+  test('getSettings uses default initialRetrainDelay when not stored',
+      () async {
     // No initial_retrain_delay_millis stored: fallback to 5 minutes.
     SharedPreferences.setMockInitialValues(<String, Object>{
       'server_url': 'http://example.com:8000',
@@ -439,6 +440,6 @@ void main() {
 
     final settings = await dataSource.getSettings();
 
-    expect(settings.initialRetrainDelay, Duration(minutes: 5));
+    expect(settings.initialRetrainDelay, const Duration(minutes: 5));
   });
 }

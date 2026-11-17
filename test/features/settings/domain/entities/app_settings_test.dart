@@ -60,8 +60,8 @@ void main() {
 
     test('copyWith initialRetrainDelay', () {
       final updated =
-          settings.copyWith(initialRetrainDelay: Duration(minutes: 10));
-      expect(updated.initialRetrainDelay, Duration(minutes: 10));
+          settings.copyWith(initialRetrainDelay: const Duration(minutes: 10));
+      expect(updated.initialRetrainDelay, const Duration(minutes: 10));
       expect(updated.serverUrl, settings.serverUrl);
       expect(updated.autoRetrain, settings.autoRetrain);
     });
@@ -75,7 +75,7 @@ void main() {
     });
 
     test('props equality reflects all fields', () {
-      final same = AppSettings(
+      final same = const AppSettings(
         serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
@@ -97,9 +97,9 @@ void main() {
 
     test('props includes initialRetrainDelay', () {
       final withDelay =
-          settings.copyWith(initialRetrainDelay: Duration(minutes: 10));
+          settings.copyWith(initialRetrainDelay: const Duration(minutes: 10));
       expect(withDelay.props.length, 5);
-      expect(withDelay.props[4], Duration(minutes: 10));
+      expect(withDelay.props[4], const Duration(minutes: 10));
     });
   });
 }

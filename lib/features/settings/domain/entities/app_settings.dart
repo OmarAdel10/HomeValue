@@ -16,11 +16,11 @@ class AppSettings extends Equatable {
     this.initialRetrainDelay,
   });
 
-  factory AppSettings.defaults() => AppSettings(
+  factory AppSettings.defaults() => const AppSettings(
         serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,
-        initialRetrainDelay: const Duration(minutes: 5),
+        initialRetrainDelay: Duration(milliseconds: 300000),
       );
 
   AppSettings copyWith({

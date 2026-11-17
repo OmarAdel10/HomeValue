@@ -69,7 +69,8 @@ void main() {
     final result = await repository.updateServerUrl('http://example.com:9000');
 
     expect(result, updated);
-    verify(() => dataSource.updateServerUrl('http://example.com:9000')).called(1);
+    verify(() => dataSource.updateServerUrl('http://example.com:9000'))
+        .called(1);
   });
 
   test('delegates updateThemeMode to the datasource', () async {
