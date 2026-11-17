@@ -150,3 +150,28 @@ Plane project `HOME` (HomeValue).
 - Info: retrain success-POST followed by a failed
   `updateLastAutoRetrain` persist is counted as a retrain failure
   (conservative; classify or comment).
+
+## HOME-39 Round 17 deferred findings (2026-11-16)
+
+- **Shared resolve/validate/pin helper** (Medium, refactor) — extract the
+  duplicated DNS-resolve + revalidate + IPv4-preference + IP-pinning logic
+  shared by the bloc `_trainUri`, prediction and comparison datasources into
+  one `core/validation.dart` helper (already tracked as Round 15 M3; still
+  open).
+- **`_onTimerFired` fire-and-forget retrain** (Low) — `_triggerRetrain()` is
+  un-awaited in the timer callback; make the timer path await the outcome or
+  document why fire-and-forget is safe (in-flight guard already prevents
+  overlap).
+- **Teredo /32 + more IPv6 tunnel ranges not blocked** (Low) — evaluation
+  decided not to expand the blocklist now; revisit if a hostile-allowlist
+  threat model is adopted.
+- **Mutable global `validation.dnsLookup`** (Low) — the test seam is a
+  process-wide global; consider a zone-scoped or injected resolver later.
+- **Test rename + misc asserts** (Low) — row 13: rename a misleading test
+  description and strengthen a couple of loose assertions; cosmetic.
+- **Three overlapping CI workflow files** (Medium, user decision) —
+  `.github/workflows/` holds `ci.yml` (push, all branches),
+  `advanced-machine-learning-ci.yml`, and `homevalue-ci.yml`
+  (workflow_dispatch only) plus `homevalue-cd.yml` (tags). Consolidation
+  needs a user decision on which definition to keep; per policy only CI may
+  run on feature branches and CD belongs on `master` only.
