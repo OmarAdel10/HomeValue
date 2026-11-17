@@ -361,4 +361,13 @@ void main() {
     dataSource = SettingsLocalDataSource(prefs);
     expect(dataSource.serverUrlBlocked, isTrue);
   });
+
+  test('serverUrlBlocked fails closed for unparseable stored URLs', () async {
+    // A malformed stored URL parses to no authority: empty host fails closed.
+    await prefs.setString('server_url', 'not a url');
+    expect(dataSource.serverUrlBlocked, isTrue);
+    // An empty host ('http://') must also fail closed.
+    await prefs.setString('server_url', 'http://');
+    expect(dataSource.serverUrlBlocked, isTrue);
+  });
 }

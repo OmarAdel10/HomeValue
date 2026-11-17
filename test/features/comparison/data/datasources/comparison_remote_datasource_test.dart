@@ -317,6 +317,56 @@ void main() {
       );
     });
   });
+
+  group('URL rebuild strips query/fragment and trailing slashes', () {
+    test('a foreign query and fragment on the base never reach the request',
+        () async {
+      final captured = <http.Request>[];
+      final datasource = ComparisonRemoteDataSource(
+        client: MockClient((request) async {
+          captured.add(request);
+          return http.Response('[]', 500);
+        }),
+        // String concatenation would push /model/comparison into the query
+        // string and GET '/' instead; Uri.replace(query: null) keeps the
+        // existing query in Dart. Rebuilding from components drops both.
+        baseUrl: 'http://8.8.8.8:8000/api?x=1#frag',
+      );
+      await expectLater(
+        datasource.fetchModelComparison(),
+        throwsA(isException),
+      );
+      expect(captured, hasLength(1));
+      expect(
+        captured.single.url.toString(),
+        'http://8.8.8.8:8000/api/model/comparison',
+      );
+      expect(captured.single.url.query, isEmpty);
+      expect(captured.single.url.fragment, isEmpty);
+    });
+
+    test('trailing slashes in the base path never double-slash the endpoint',
+        () async {
+      final captured = <http.Request>[];
+      final datasource = ComparisonRemoteDataSource(
+        client: MockClient((request) async {
+          captured.add(request);
+          return http.Response('[]', 500);
+        }),
+        baseUrl: 'http://8.8.8.8:8000/api///',
+      );
+      await expectLater(
+        datasource.fetchModelComparison(),
+        throwsA(isException),
+      );
+      expect(captured, hasLength(1));
+      expect(
+        captured.single.url.toString(),
+        'http://8.8.8.8:8000/api/model/comparison',
+      );
+      expect(captured.single.url.path, isNot(contains('//')));
+    });
+  });
 }
 
 /// Minimal [http.BaseClient] subclass that counts close() calls so the

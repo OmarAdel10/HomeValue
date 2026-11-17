@@ -415,5 +415,64 @@ void main() {
       expect(find.text('Could not load settings'), findsNothing);
       expect(find.text('API Server'), findsOneWidget);
     });
+
+    testWidgets('shows the auto-retrain suspension notice verbatim',
+        (WidgetTester tester) async {
+      // The retrain window is judged against the bloc's injectable clock;
+      // widget pumps advance the test's fake clock 1s per pump, so `now`
+      // must follow it or every attempt beyond the first is judged not-due.
+      var fakeNow = DateTime(2026, 1, 1);
+      final overdueSettings = AppSettings(
+        serverUrl: 'http://8.8.8.8:8000',
+        themeMode: ThemeMode.system,
+        autoRetrain: true,
+        lastAutoRetrainAt: fakeNow.subtract(const Duration(days: 2)),
+      );
+      final failingClient = MockClient(
+        (request) async => throw http.ClientException('backend down'),
+      );
+      addTearDown(failingClient.close);
+      final suspensionBloc = SettingsBloc(
+        repository: mockRepository,
+        httpClient: failingClient,
+        dnsLookup: (host) async =>
+            <InternetAddress>[InternetAddress('8.8.8.8')],
+        retrainInterval: const Duration(seconds: 1),
+        now: () => fakeNow,
+      );
+      addTearDown(suspensionBloc.close);
+
+      when(() => mockRepository.getSettings())
+          .thenAnswer((_) async => overdueSettings);
+      when(() => mockRepository.updateLastAutoRetrain(any()))
+          .thenAnswer((_) async => overdueSettings);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BlocProvider<SettingsBloc>.value(
+            value: suspensionBloc,
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+      // One plain pump: processes the LoadSettings microtasks and schedules
+      // the zero-delay first retrain without advancing the clock.
+      await tester.pump();
+
+      // Drive the 5 consecutive failures that reach the suspension cap:
+      // each iteration advances both the test clock (pump) and the bloc's
+      // injected clock so the next window is judged due exactly on fire.
+      for (var i = 0; i < 8; i++) {
+        fakeNow = fakeNow.add(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      // The suspension must be visible verbatim in the UI, not a hardcoded
+      // generic string: the user cannot see that retraining stopped otherwise.
+      expect(
+        find.text('Auto-retrain suspended after 5 consecutive failures'),
+        findsOneWidget,
+      );
+    });
   });
 }

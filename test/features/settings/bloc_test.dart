@@ -538,6 +538,31 @@ void main() {
       expect(failures.last.attempt, greaterThan(failures.first.attempt));
       expect(failures.last.isLoadFailure, isFalse);
     });
+
+    test('surfaces a persist-time blocked URL as a policy message', () async {
+      when(() => mockRepository.updateServerUrl(any()))
+          .thenThrow(ArgumentError('Blocked host'));
+      final bloc = SettingsBloc(
+        repository: mockRepository,
+        dnsLookup: (host) async =>
+            <InternetAddress>[InternetAddress('8.8.8.8')],
+      );
+      addTearDown(bloc.close);
+
+      final seen = <SettingsState>[];
+      final subscription = bloc.stream.listen(seen.add);
+      addTearDown(subscription.cancel);
+
+      bloc.add(const UpdateServerUrl('http://127.0.0.1:8000'));
+      await pumpEventQueue();
+
+      expect(seen.last, isA<SettingsFailure>());
+      // The policy reason is user-actionable, but the URL itself must never
+      // leak into the failure message.
+      final failure = seen.last as SettingsFailure;
+      expect(failure.message, 'Server URL blocked by policy');
+      expect(failure.message, isNot(contains('127.0.0.1')));
+    });
   });
 
   group('SettingsBloc auto retrain scheduling', () {
@@ -1579,6 +1604,276 @@ void main() {
 
         bloc.close();
         async.flushMicrotasks();
+      });
+    });
+
+    test('suspends visibly after 5 consecutive DNS outages', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) async =>
+              throw const SocketException('DNS server unreachable'),
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, isEmpty);
+
+        // Four more outage windows reach the cap of 5 consecutive failures.
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+
+        // The suspension must be visible, not a silent permanent disarm.
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        final failure = bloc.state as SettingsFailure;
+        expect(failure.message, contains('suspended'));
+        expect(failure.isLoadFailure, isFalse);
+
+        // After suspension the timer is disarmed: a further window is quiet.
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, isEmpty);
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('an empty DNS result counts as a transient failure', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) async => <InternetAddress>[],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        // Five consecutive empty-DNS windows exhaust the cap: no POST is
+        // ever made, but every window is a real attempt that counts toward
+        // the suspension (transient classification, not a policy block).
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, isEmpty);
+
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+        expect((bloc.state as SettingsFailure).message, contains('suspended'));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a hung DNS lookup times out and reschedules', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final hungDns = Completer<List<InternetAddress>>();
+        var dnsRecovered = false;
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) {
+            if (dnsRecovered) {
+              return Future<List<InternetAddress>>.value(
+                  <InternetAddress>[InternetAddress('8.8.8.8')]);
+            }
+            return hungDns.future;
+          },
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        // Elapse past the 10s DNS timeout: _trainUri fails with the
+        // dedicated DNS-unavailable error and reschedules on the normal
+        // window instead of disarming.
+        async.elapse(const Duration(seconds: 11));
+        async.flushMicrotasks();
+        expect(requests, isEmpty);
+
+        dnsRecovered = true;
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(requests, hasLength(1));
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('prefers IPv4 when DNS returns both IPv6 and IPv4 addresses', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final okClient = MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"status": "ok"}', 200);
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: okClient,
+          dnsLookup: (host) async => <InternetAddress>[
+            InternetAddress('2001:db8::1'),
+            InternetAddress('8.8.8.8'),
+          ],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, hasLength(1));
+        // http connects to the first validated address: IPv4 is preferred so
+        // an unreachable IPv6 address cannot strand the request.
+        expect(requests.first.url.host, '8.8.8.8');
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('re-enabling auto retrain after suspension grants a fresh budget', () {
+      fakeAsync((async) {
+        final failingRequests = <http.Request>[];
+        final failingClient = MockClient((request) async {
+          failingRequests.add(request);
+          throw http.ClientException('backend down');
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: failingClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+        when(() => mockRepository.updateAutoRetrain(any())).thenAnswer(
+            (invocation) async => (invocation.positionalArguments.first as bool)
+                ? enabledSettings
+                : enabledSettings.copyWith(autoRetrain: false));
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(failingRequests, hasLength(1));
+
+        // Burn the cap to reach suspension.
+        for (var i = 0; i < 4; i++) {
+          advance(async, const Duration(hours: 1));
+          async.flushMicrotasks();
+          async.flushMicrotasks();
+        }
+        async.flushMicrotasks();
+        expect(bloc.state, isA<SettingsFailure>());
+
+        // Toggle off then on: the enable path resets the counter so a retry
+        // is granted even though 5 consecutive failures already happened.
+        bloc.add(const ToggleAutoRetrain(false));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        bloc.add(const ToggleAutoRetrain(true));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+
+        // The re-enable rescheduled from the last attempt; advancing one
+        // window must fire the retry (request 6).
+        advance(async, const Duration(hours: 1));
+        async.flushMicrotasks();
+        async.flushMicrotasks();
+        expect(failingRequests, hasLength(6));
+        // The timer-path failure does not re-emit a suspension state.
+        expect(bloc.state, isA<SettingsLoaded>());
+
+        bloc.close();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a retrain completing after close() does not throw', () {
+      fakeAsync((async) {
+        final requests = <http.Request>[];
+        final gate = Completer<http.Response>();
+        final gatedClient = MockClient((request) async {
+          requests.add(request);
+          return gate.future;
+        });
+        final bloc = SettingsBloc(
+          repository: mockRepository,
+          httpClient: gatedClient,
+          dnsLookup: (host) async =>
+              <InternetAddress>[InternetAddress('8.8.8.8')],
+          retrainInterval: const Duration(hours: 1),
+          now: clock,
+        );
+
+        bloc.add(const LoadSettings());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 1));
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        // The zero-delay initial retrain is in flight, parked on the gated
+        // client.
+        expect(requests, hasLength(1));
+
+        // Close while the retrain response is still pending.
+        bloc.close();
+        async.flushMicrotasks();
+
+        // The response completes after close(): the finally block must not
+        // reschedule a timer on the closed bloc and the completion must not
+        // throw (a StateError here would fail the test).
+        gate.complete(http.Response('{"status": "ok"}', 200));
+        async.flushMicrotasks();
+        for (var i = 0; i < 5; i++) {
+          async.flushMicrotasks();
+        }
+        expect(requests, hasLength(1));
       });
     });
   });

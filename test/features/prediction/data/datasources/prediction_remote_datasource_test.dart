@@ -227,6 +227,23 @@ void main() {
         throwsA(isA<ModelNotLoadedException>()),
       );
     });
+
+    test('rejectRedirect throws on 302', () async {
+      final client = MockClient((request) async {
+        expect(request.followRedirects, isFalse,
+            reason: 'redirects must never be followed (SSRF)');
+        return http.Response('', 302);
+      });
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: baseUrl,
+        timeout: const Duration(seconds: 30),
+        client: client,
+      );
+      expect(
+        () => datasource.predictBatch([features]),
+        throwsA(isA<http.ClientException>()),
+      );
+    });
   });
 
   group('getModelInfo', () {
@@ -264,6 +281,23 @@ void main() {
       expect(
         () => datasource.getModelInfo(),
         throwsA(isA<PredictionException>()),
+      );
+    });
+
+    test('rejectRedirect throws on 302', () async {
+      final client = MockClient((request) async {
+        expect(request.followRedirects, isFalse,
+            reason: 'redirects must never be followed (SSRF)');
+        return http.Response('', 302);
+      });
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: baseUrl,
+        timeout: const Duration(seconds: 30),
+        client: client,
+      );
+      expect(
+        () => datasource.getModelInfo(),
+        throwsA(isA<http.ClientException>()),
       );
     });
   });
@@ -311,26 +345,111 @@ void main() {
         throwsA(isA<PredictionException>()),
       );
     });
-  });
 
-  group('dispose', () {
-    test('closes owned client', () {
-      // IOClient close is idempotent-safe; just ensure dispose doesn't throw.
-      final datasource = PredictionRemoteDataSource(
-        baseUrl: baseUrl,
-        timeout: const Duration(seconds: 30),
-      );
-      expect(() => datasource.dispose(), returnsNormally);
-    });
-
-    test('does not close injected client', () {
-      final client = MockClient((_) async => http.Response('{}', 200));
+    test('rejectRedirect throws on 302', () async {
+      final client = MockClient((request) async {
+        expect(request.followRedirects, isFalse,
+            reason: 'redirects must never be followed (SSRF)');
+        return http.Response('', 302);
+      });
       final datasource = PredictionRemoteDataSource(
         baseUrl: baseUrl,
         timeout: const Duration(seconds: 30),
         client: client,
       );
+      expect(
+        () => datasource.getModelComparison(),
+        throwsA(isA<http.ClientException>()),
+      );
+    });
+  });
+
+  group('dispose', () {
+    test('dispose on an owned client is safe and idempotent', () {
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: baseUrl,
+        timeout: const Duration(seconds: 30),
+      );
       expect(() => datasource.dispose(), returnsNormally);
+      expect(() => datasource.dispose(), returnsNormally);
+    });
+
+    test('dispose never closes an injected client (owner manages it)', () {
+      var closed = 0;
+      final injectedClient = _CloseTrackingClient(() => closed++);
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: baseUrl,
+        timeout: const Duration(seconds: 30),
+        client: injectedClient,
+      );
+      datasource.dispose();
+      expect(closed, 0);
+    });
+  });
+
+  group('URL rebuild strips query/fragment and trailing slashes', () {
+    test('a foreign query and fragment on the base never reach the request',
+        () async {
+      final captured = <http.Request>[];
+      final datasource = PredictionRemoteDataSource(
+        // String concatenation would push /predict into the query string
+        // (POST lands on '/' and the retrain silently fails every window);
+        // Uri.replace(query: null) keeps the existing query in Dart.
+        // Rebuilding from components drops both.
+        baseUrl: 'http://8.8.8.8:8000/api?x=1#frag',
+        timeout: const Duration(seconds: 30),
+        client: MockClient((request) async {
+          captured.add(request);
+          return http.Response('{}', 500);
+        }),
+      );
+      await expectLater(
+        datasource.predict(features),
+        throwsA(isA<PredictionException>()),
+      );
+      expect(captured, hasLength(1));
+      expect(
+        captured.single.url.toString(),
+        'http://8.8.8.8:8000/api/predict',
+      );
+      expect(captured.single.url.query, isEmpty);
+      expect(captured.single.url.fragment, isEmpty);
+    });
+
+    test('trailing slashes in the base path never double-slash the endpoint',
+        () async {
+      final captured = <http.Request>[];
+      final datasource = PredictionRemoteDataSource(
+        baseUrl: 'http://8.8.8.8:8000/api///',
+        timeout: const Duration(seconds: 30),
+        client: MockClient((request) async {
+          captured.add(request);
+          return http.Response('{}', 500);
+        }),
+      );
+      await expectLater(
+        datasource.predictBatch([features]),
+        throwsA(isA<PredictionException>()),
+      );
+      await expectLater(
+        datasource.getModelInfo(),
+        throwsA(isA<PredictionException>()),
+      );
+      await expectLater(
+        datasource.getModelComparison(),
+        throwsA(isA<PredictionException>()),
+      );
+      expect(
+        captured.map((r) => r.url.toString()),
+        <String>[
+          'http://8.8.8.8:8000/api/predict/batch',
+          'http://8.8.8.8:8000/api/model/info',
+          'http://8.8.8.8:8000/api/model/comparison',
+        ],
+      );
+      for (final request in captured) {
+        expect(request.url.path, isNot(contains('//')));
+      }
     });
   });
 
@@ -477,4 +596,20 @@ void main() {
       );
     });
   });
+}
+
+/// Minimal [http.BaseClient] subclass that counts close() calls so the
+/// datasource dispose contract is observable.
+class _CloseTrackingClient extends http.BaseClient {
+  final void Function() onClose;
+
+  _CloseTrackingClient(this.onClose);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  void close() => onClose();
 }

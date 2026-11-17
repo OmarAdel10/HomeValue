@@ -427,6 +427,74 @@ void main() {
       expect(() => assertAllowedHost('not-a-url'), throwsA(isArgumentError));
       expect(() => assertAllowedHost(''), throwsA(isArgumentError));
     });
+
+    test('rejects empty host', () {
+      expect(
+        () => assertAllowedHost('http://:8000/'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects non-http(s) scheme', () {
+      expect(
+        () => assertAllowedHost('ftp://example.com/'),
+        throwsA(isArgumentError),
+      );
+      expect(
+        () => assertAllowedHost('file:///etc/passwd'),
+        throwsA(isArgumentError),
+      );
+    });
+  });
+
+  group('validateServerUrlSync', () {
+    test('returns the parsed URI for a public URL', () {
+      final uri = validateServerUrlSync('http://example.com:8000');
+      expect(uri.host, 'example.com');
+      expect(uri.port, 8000);
+      expect(uri.scheme, 'http');
+    });
+
+    test('rejects raw control characters before parsing', () {
+      expect(
+        () => validateServerUrlSync('http://example.com/\x00'),
+        throwsA(isArgumentError),
+      );
+      expect(
+        () => validateServerUrlSync('http://example.com\x7F'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects blocked host', () {
+      expect(
+        () => validateServerUrlSync('http://127.0.0.1:8000'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects embedded credentials', () {
+      expect(
+        () => validateServerUrlSync('http://user:pass@example.com'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects malformed and empty-host input', () {
+      expect(
+          () => validateServerUrlSync('not-a-url'), throwsA(isArgumentError));
+      expect(
+        () => validateServerUrlSync('http://:8000/'),
+        throwsA(isArgumentError),
+      );
+    });
+
+    test('rejects non-http(s) scheme', () {
+      expect(
+        () => validateServerUrlSync('ftp://example.com/'),
+        throwsA(isArgumentError),
+      );
+    });
   });
 
   group('rejectRedirect', () {
