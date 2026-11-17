@@ -55,4 +55,52 @@ void main() {
     expect(repository.serverUrlBlocked, isFalse);
     verify(() => dataSource.serverUrlBlocked).called(1);
   });
+
+  test('delegates updateServerUrl to the datasource', () async {
+    const updated = AppSettings(
+      serverUrl: 'http://example.com:9000',
+      themeMode: ThemeMode.system,
+      autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
+    );
+    when(() => dataSource.updateServerUrl('http://example.com:9000'))
+        .thenAnswer((_) async => updated);
+
+    final result = await repository.updateServerUrl('http://example.com:9000');
+
+    expect(result, updated);
+    verify(() => dataSource.updateServerUrl('http://example.com:9000')).called(1);
+  });
+
+  test('delegates updateThemeMode to the datasource', () async {
+    const updated = AppSettings(
+      serverUrl: 'http://example.com:8000',
+      themeMode: ThemeMode.dark,
+      autoRetrain: false,
+      initialRetrainDelay: Duration.zero,
+    );
+    when(() => dataSource.updateThemeMode(ThemeMode.dark))
+        .thenAnswer((_) async => updated);
+
+    final result = await repository.updateThemeMode(ThemeMode.dark);
+
+    expect(result, updated);
+    verify(() => dataSource.updateThemeMode(ThemeMode.dark)).called(1);
+  });
+
+  test('delegates updateAutoRetrain to the datasource', () async {
+    const updated = AppSettings(
+      serverUrl: 'http://example.com:8000',
+      themeMode: ThemeMode.system,
+      autoRetrain: true,
+      initialRetrainDelay: Duration.zero,
+    );
+    when(() => dataSource.updateAutoRetrain(true))
+        .thenAnswer((_) async => updated);
+
+    final result = await repository.updateAutoRetrain(true);
+
+    expect(result, updated);
+    verify(() => dataSource.updateAutoRetrain(true)).called(1);
+  });
 }

@@ -17,7 +17,8 @@ void main() {
       expect(AppSettings.defaults().themeMode, ThemeMode.system);
       expect(AppSettings.defaults().autoRetrain, isFalse);
       expect(AppSettings.defaults().lastAutoRetrainAt, isNull);
-      expect(AppSettings.defaults().initialRetrainDelay, Duration(minutes: 5));
+      expect(AppSettings.defaults().initialRetrainDelay,
+          const Duration(milliseconds: 300000));
     });
 
     test('copyWith with no changes returns equal settings', () {
@@ -74,7 +75,7 @@ void main() {
     });
 
     test('props equality reflects all fields', () {
-      final same = const AppSettings(
+      final same = AppSettings(
         serverUrl: 'http://example.com:8000',
         themeMode: ThemeMode.system,
         autoRetrain: false,

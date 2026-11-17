@@ -404,4 +404,41 @@ void main() {
     await prefs.setString('server_url', 'http://');
     expect(dataSource.serverUrlBlocked, isTrue);
   });
+
+  test('updateThemeMode persists and returns updated settings', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    // Don't mock updateThemeMode - test the real implementation.
+
+    final result = await dataSource.updateThemeMode(ThemeMode.dark);
+
+    expect(result.themeMode, ThemeMode.dark);
+    expect(result.serverUrl, 'http://example.com:8000');
+    expect(result.autoRetrain, isFalse);
+    expect(prefs.getInt('theme_mode'), ThemeMode.dark.index);
+  });
+
+  test('updateAutoRetrain persists and returns updated settings', () async {
+    await prefs.setString('server_url', 'http://example.com:8000');
+    // Don't mock updateAutoRetrain - test the real implementation.
+
+    final result = await dataSource.updateAutoRetrain(true);
+
+    expect(result.autoRetrain, isTrue);
+    expect(result.serverUrl, 'http://example.com:8000');
+    expect(result.themeMode, ThemeMode.system);
+    expect(prefs.getBool('auto_retrain'), isTrue);
+  });
+
+  test('getSettings uses default initialRetrainDelay when not stored', () async {
+    // No initial_retrain_delay_millis stored: fallback to 5 minutes.
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'server_url': 'http://example.com:8000',
+    });
+    prefs = await SharedPreferences.getInstance();
+    dataSource = SettingsLocalDataSource(prefs);
+
+    final settings = await dataSource.getSettings();
+
+    expect(settings.initialRetrainDelay, Duration(minutes: 5));
+  });
 }

@@ -19,7 +19,6 @@ class SettingsLocalDataSource {
   static const String _defaultServerUrl = 'http://example.com:8000';
   static const int _defaultThemeMode = 0; // ThemeMode.system
   static const bool _defaultAutoRetrain = false;
-  static const int _defaultInitialRetrainDelayMillis = 300000; // 5 minutes
 
   final SharedPreferences _prefs;
 
@@ -109,8 +108,7 @@ class SettingsLocalDataSource {
     if (delayMillis != null) {
       initialRetrainDelay = Duration(milliseconds: delayMillis);
     } else {
-      initialRetrainDelay =
-          Duration(milliseconds: _defaultInitialRetrainDelayMillis);
+      initialRetrainDelay = const Duration(minutes: 5);
     }
 
     final themeMode =
