@@ -85,3 +85,132 @@ Plane project `HOME` (HomeValue).
 - **HOME-41** — `ml_backend/src/ml_backend/api/predict.py:69-84` batch validation is
   untested: defaulted `ocean_proximity`, rejected invalid category, and the 1000
   sample cap have no cases in `tests/test_predict_api.py`.
+
+## HOME-39 Round 14 deferred findings (2026-11-15)
+
+- **HTTPS socket-level IP pinning** — `lib/features/settings/presentation/bloc/settings_bloc.dart`
+  (`_trainUri`) and `prediction_remote_datasource.dart` / `comparison_remote_datasource.dart`
+  keep the hostname for https targets instead of pinning the resolved IP, because
+  `uri.replace(host: ip)` breaks TLS SNI/cert verification. Socket-level pinning
+  (connect to validated IP, SNI = hostname) is the complete fix; needs a custom
+  connectionFactory or platform channel. Blocked-host validation still runs on
+  every resolution, so the TOCTOU window is bounded, not closed.
+- **bloc `e.toString()` error leakage** — `lib/features/prediction/presentation/bloc/prediction_bloc.dart`
+  and `lib/features/comparison/presentation/bloc/comparison_bloc.dart` emit
+  `e.toString()` in failure states, which can surface URLs/exception internals in
+  the UI. Pre-existing (not introduced by this branch). Replace with generic
+  messages + log type only.
+- **Design decision: default serverUrl** — `AppConstants.apiBaseUrl` /
+  `AppSettings.defaults()` use `http://example.com:8000` which routes to IANA if a
+  user never configures the app. Consider empty/explicit-first-config UX.
+- **Design decision: localhost workflow** — developers can no longer point the app
+  at a local backend (loopback is blocked by the SSRF allowlist). Consider a
+  debug-only override (kReleaseMode gate) for trusted-local development.
+
+## HOME-39 Round 15 deferred findings (2026-11-15)
+
+- **Extract shared resolve/validate/pin helper + repo.retrain()** (QA Medium M3) —
+  the DNS-resolve + per-address-allowlist + IPv4-preferred-pin sequence is
+  triplicated across `settings_bloc.dart` (`_trainUri`),
+  `prediction_remote_datasource.dart` (`_resolveAndValidateHost`/`_pinnedUri`) and
+  `comparison_remote_datasource.dart`. Extract into `lib/core/validation.dart`
+  and move the retrain POST out of the presentation layer into
+  `SettingsRepository.retrain()`. Refactor branch.
+- **Default serverUrl product decision** (QA Medium M6) — `http://example.com:8000`
+  default routes to IANA; awaiting user decision (empty/explicit-first-config UX).
+- **DNS timeout drift** (Info) — `_trainUri` uses 10s, prediction datasource uses
+  its `timeout` field, comparison datasource uses `AppConstants.apiTimeout`.
+  Standardize on one constant/seam.
+- **Domain-layer import** (Info) — `lib/features/settings/domain/entities/app_settings.dart`
+  imports `flutter/material.dart` (ThemeMode); consider moving ThemeMode out of
+  the domain layer.
+- **Default URL duplicated in 3 files** (Info) — `AppConstants.apiBaseUrl`,
+  `AppSettings.defaults()`, `SettingsLocalDataSource._defaultServerUrl`. Single
+  source of truth.
+- **fake_async flushMicrotasks ritual** (Info) — ~10 doubled/tripled
+  `flushMicrotasks()` calls in `bloc_test.dart`; fragile but green. Consider a
+  documented helper.
+- **Response body not capped** (Info) — retrain/comparison responses are read
+  fully into memory; cap size if untrusted servers are ever allowed.
+- **Shorthand IPv4 (`127.1`) + trailing-dot `localhost.`** (Info) — current
+  allowlist treats `127.1` as a non-4-part name (DNS lookup decides), and the
+  trailing-dot strip covers `localhost.`; verify platform resolvers cannot map
+  these to loopback in `validateServerUrl`.
+
+## HOME-39 Round 16 deferred findings (2026-11-16)
+
+- Extract documented `settle(async)` helper to replace the repeated
+  `flushMicrotasks` ritual in bloc tests; make the retrain response
+  deadline injectable (mirror the datasource `timeout` seam).
+- Product decision: zero-delay immediate retrain when saving a first
+  server URL with auto-retrain enabled (may be intended first-config
+  UX; confirm with product).
+- Extend di_test for the new datasource wiring (baseUrlProvider
+  closure) and assert `AppConstants.apiBaseUrl` value.
+- Info: retrain success-POST followed by a failed
+  `updateLastAutoRetrain` persist is counted as a retrain failure
+  (conservative; classify or comment).
+
+## HOME-39 Round 17 deferred findings (2026-11-16)
+
+- **Shared resolve/validate/pin helper** (Medium, refactor) — extract the
+  duplicated DNS-resolve + revalidate + IPv4-preference + IP-pinning logic
+  shared by the bloc `_trainUri`, prediction and comparison datasources into
+  one `core/validation.dart` helper (already tracked as Round 15 M3; still
+  open).
+- **`_onTimerFired` fire-and-forget retrain** (Low) — `_triggerRetrain()` is
+  un-awaited in the timer callback; make the timer path await the outcome or
+  document why fire-and-forget is safe (in-flight guard already prevents
+  overlap).
+- **Teredo /32 + more IPv6 tunnel ranges not blocked** (Low) — evaluation
+  decided not to expand the blocklist now; revisit if a hostile-allowlist
+  threat model is adopted.
+- **Mutable global `validation.dnsLookup`** (Low) — the test seam is a
+  process-wide global; consider a zone-scoped or injected resolver later.
+- **Test rename + misc asserts** (Low) — row 13: rename a misleading test
+  description and strengthen a couple of loose assertions; cosmetic.
+- **Three overlapping CI workflow files** (Medium, user decision) —
+  `.github/workflows/` holds `ci.yml` (push, all branches),
+  `advanced-machine-learning-ci.yml`, and `homevalue-ci.yml`
+  (workflow_dispatch only) plus `homevalue-cd.yml` (tags). Consolidation
+  needs a user decision on which definition to keep; per policy only CI may
+  run on feature branches and CD belongs on `master` only.
+
+## HOME-39 Round 19 deferred findings (2026-11-17)
+
+- **https socket-level pinning via connectionFactory** (Medium) — tracked
+  since Round 14; needs a TLS test rig before the datasources/bloc can pin
+  at the socket layer for https bases (currently hostname-only for https).
+- **Duplicate CI workflows** (Low, user decision) — same as Round 17 row 7;
+  awaiting user choice on consolidation.
+- **Extract shared `resolveAndPinHost` helper** (Low) — Round 15/17 M3
+  refactor; duplicated resolve/validate/pin logic in bloc + 2 datasources.
+- **Mutable global `validation.dnsLookup` seam** (Low) — Round 17 row 12;
+  consider zone-scoped or injected resolver.
+- **Teredo /32 + IPv6 tunnel ranges** (Low) — Round 17 row 12; not expanded.
+- **prediction/comparison bloc `e.toString()` leakage** (Low) — tracked
+  since Round 14: bloc error paths may surface raw exception text in the
+  prediction/comparison UIs (settings bloc is leak-safe already).
+- **304 redirect handling** (Info) — validation `rejectRedirect` treats 304
+  as a 3xx rejection; harmless but semantically a cache response.
+- **3xx consumes a retrain attempt** (Info) — a redirect response reaches
+  the POST path (followRedirects=false) and is rejected as failed,
+  consuming the consecutive-failure budget; consider classifying as a
+  policy block.
+- **G6-G12 defensive tests** (Info) — QA's residual low-priority test ideas
+  (defensive branches in the retrain loop) not worth the churn now.
+- **DI dispose hook + `apiBaseUrl` assert** (Info) — di_test never disposes
+  datasource clients (app-lifetime singletons OK) and the
+  `AppConstants.apiBaseUrl` value assertion remains unimplemented (Round
+  16 note carried forward).
+- **Default-URL product decision** (Info) — shipped default
+  `http://example.com:8000` is a placeholder; confirm the real default.
+- **Coverage Lows B-G5..G9** — screen validator message verbatim, removed
+  snackbar absence, updateServerUrl trim, predictBatch 500,
+  validateServerUrlSync space/tab; low-value assertions deferred.
+- **Bloc suspension message verbatim assert** (Low) — bloc-level suspension
+  test asserts `contains('suspended')`; the verbatim string is only
+  asserted at the UI level. Tighten if the message becomes contractual.
+- **DI-injected comparison client never closed** (Info) — datasource
+  injected via DI is an app-lifetime singleton; closing is unnecessary,
+  noted for dispose-hook work above.

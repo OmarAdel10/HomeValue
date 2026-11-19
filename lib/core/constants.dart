@@ -3,7 +3,7 @@ library;
 
 class AppConstants {
   // API Configuration
-  static const String apiBaseUrl = 'http://localhost:8000';
+  static const String apiBaseUrl = 'http://example.com:8000';
   static const Duration apiTimeout = Duration(seconds: 30);
 
   // API Endpoints

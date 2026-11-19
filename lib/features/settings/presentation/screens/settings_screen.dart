@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/validation.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -15,6 +16,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _urlController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  AppSettings _lastSettings = AppSettings.defaults();
 
   @override
   void initState() {
@@ -33,7 +35,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return BlocListener<SettingsBloc, SettingsState>(
       listener: (context, state) {
         if (state is SettingsLoaded) {
+          _lastSettings = state.settings;
           _urlController.text = state.settings.serverUrl;
+        } else if (state is SettingsFailure && !state.isLoadFailure) {
+          // Show the state's message (already leak-safe) so retrain
+          // suspension ('Auto-retrain suspended after 5 consecutive
+          // failures') surfaces verbatim instead of a generic string.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message)),
+          );
         }
       },
       child: Scaffold(
@@ -42,11 +52,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         body: BlocBuilder<SettingsBloc, SettingsState>(
           builder: (context, state) {
-            if (state is SettingsLoaded) {
-              return _buildSettingsForm(context, state.settings);
+            if (state is SettingsFailure && state.isLoadFailure) {
+              return _buildFailure(context);
             }
-            return const Center(child: CircularProgressIndicator());
+            final settings =
+                state is SettingsLoaded ? state.settings : _lastSettings;
+            return _buildSettingsForm(context, settings);
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFailure(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Could not load settings',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Could not read local settings. Try again.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () =>
+                  context.read<SettingsBloc>().add(const LoadSettings()),
+              child: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );
@@ -72,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _urlController,
                       decoration: const InputDecoration(
                         labelText: 'Server URL',
-                        hintText: 'http://localhost:8000',
+                        hintText: 'http://example.com:8000',
                         prefixIcon: Icon(Icons.cloud),
                         border: OutlineInputBorder(),
                       ),
@@ -80,12 +127,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter a server URL';
                         }
-                        final uri = Uri.tryParse(value.trim());
+                        final trimmed = value.trim();
+                        final uri = Uri.tryParse(trimmed);
                         if (uri == null ||
                             !uri.hasScheme ||
                             (uri.scheme != 'http' && uri.scheme != 'https') ||
                             uri.host.isEmpty) {
                           return 'Please enter a valid URL';
+                        }
+                        if (!isAllowedHost(uri.host)) {
+                          return 'Blocked host: private or reserved addresses are not allowed';
                         }
                         return null;
                       },
@@ -97,9 +148,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           context.read<SettingsBloc>().add(
                                 UpdateServerUrl(_urlController.text.trim()),
                               );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Server URL updated')),
-                          );
                         }
                       },
                       child: const Text('Save Server URL'),

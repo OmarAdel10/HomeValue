@@ -1,5 +1,6 @@
+import 'dart:io';
 import 'package:get_it/get_it.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
@@ -40,7 +41,10 @@ Future<void> initDependencies() async {
   // Data sources - Comparison
   sl.registerLazySingleton<ComparisonRemoteDataSource>(
     () => ComparisonRemoteDataSource(
-      client: http.Client(),
+      // package:http follows 3xx by default; redirect rejection happens
+      // per-request (followRedirects=false + rejectRedirect) inside the
+      // datasource, not at the client level.
+      client: IOClient(HttpClient()),
       baseUrl: AppConstants.apiBaseUrl,
       baseUrlProvider: () => sl<SettingsLocalDataSource>().serverUrl,
     ),
