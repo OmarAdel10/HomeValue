@@ -52,7 +52,8 @@ class BackendService {
     // Already starting?
     if (_isStarting) {
       // Wait for startup to complete
-      await _waitForState(BackendState.running, timeout: const Duration(seconds: 30));
+      await _waitForState(BackendState.running,
+          timeout: const Duration(seconds: 30));
       return _currentState == BackendState.running;
     }
 
@@ -61,7 +62,8 @@ class BackendService {
 
     try {
       await _startBackend();
-      final ready = await _waitForState(BackendState.running, timeout: const Duration(seconds: 30));
+      final ready = await _waitForState(BackendState.running,
+          timeout: const Duration(seconds: 30));
       return ready;
     } catch (e) {
       _updateState(BackendState.failed);
@@ -83,7 +85,15 @@ class BackendService {
 
     _backendProcess = await Process.start(
       pythonExecutable,
-      ['-m', 'uvicorn', 'ml_backend.server:app', '--host', '127.0.0.1', '--port', '8000'],
+      [
+        '-m',
+        'uvicorn',
+        'ml_backend.server:app',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '8000'
+      ],
       workingDirectory: mlBackendDir.path,
       mode: ProcessStartMode.inheritStdio,
     );
@@ -99,7 +109,8 @@ class BackendService {
   }
 
   /// Waits for backend to reach a specific state.
-  Future<bool> _waitForState(BackendState target, {required Duration timeout}) async {
+  Future<bool> _waitForState(BackendState target,
+      {required Duration timeout}) async {
     final completer = Completer<bool>();
     late StreamSubscription<BackendState> subscription;
 
@@ -137,7 +148,9 @@ class BackendService {
   /// Checks if backend is healthy.
   Future<bool> _isHealthy() async {
     try {
-      final response = await http.get(Uri.parse(healthUrl)).timeout(const Duration(seconds: 3));
+      final response = await http
+          .get(Uri.parse(healthUrl))
+          .timeout(const Duration(seconds: 3));
       return response.statusCode == 200;
     } catch (_) {
       return false;
