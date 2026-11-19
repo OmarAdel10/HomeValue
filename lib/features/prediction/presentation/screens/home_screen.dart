@@ -135,18 +135,28 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Core Property Features
-        _buildSectionHeader('Property Details', 'Basic characteristics of the house'),
-        _buildFeatureFieldWithDefault('MedInc', 8.3252, 'Median income in \$100k (e.g., 8.3252 = \$832k)'),
-        _buildFeatureFieldWithDefault('HouseAge', 41, 'Median house age in years (e.g., 41)'),
-        _buildFeatureFieldWithDefault('AveRooms', 6.98, 'Avg total rooms per household (e.g., 6.98)'),
-        _buildFeatureFieldWithDefault('AveBedrms', 1.02, 'Avg bedrooms per household (e.g., 1.02)'),
+        _buildSectionHeader(
+            'Property Details', 'Basic characteristics of the house'),
+        _buildFeatureFieldWithDefault('MedInc', 8.3252,
+            'Median income in \$100k (e.g., 8.3252 = \$832k)'),
+        _buildFeatureFieldWithDefault(
+            'HouseAge', 41, 'Median house age in years (e.g., 41)'),
+        _buildFeatureFieldWithDefault(
+            'AveRooms', 6.98, 'Avg total rooms per household (e.g., 6.98)'),
+        _buildFeatureFieldWithDefault(
+            'AveBedrms', 1.02, 'Avg bedrooms per household (e.g., 1.02)'),
         const SizedBox(height: 24),
         // Location & Demographics (with smart defaults)
-        _buildSectionHeader('Location & Area', 'Neighborhood context — auto-filled for California'),
-        _buildFeatureFieldWithDefault('Latitude', 37.88, 'Approximate latitude in California (e.g., 37.88 for Bay Area)'),
-        _buildFeatureFieldWithDefault('Longitude', -122.23, 'Approximate longitude in California (e.g., -122.23 for Bay Area)'),
-        _buildFeatureFieldWithDefault('Population', 322, 'Block group population (typical: 300–3000)'),
-        _buildFeatureFieldWithDefault('AveOccup', 2.55, 'Average people per household'),
+        _buildSectionHeader('Location & Area',
+            'Neighborhood context — auto-filled for California'),
+        _buildFeatureFieldWithDefault('Latitude', 37.88,
+            'Approximate latitude in California (e.g., 37.88 for Bay Area)'),
+        _buildFeatureFieldWithDefault('Longitude', -122.23,
+            'Approximate longitude in California (e.g., -122.23 for Bay Area)'),
+        _buildFeatureFieldWithDefault(
+            'Population', 322, 'Block group population (typical: 300–3000)'),
+        _buildFeatureFieldWithDefault(
+            'AveOccup', 2.55, 'Average people per household'),
         const SizedBox(height: 24),
         // Ocean Proximity
         _buildSectionHeader('Environment', 'Proximity to water'),
@@ -161,15 +171,22 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget _buildFeatureFieldWithDefault(String feature, double defaultValue, String helpText) {
+  Widget _buildFeatureFieldWithDefault(
+      String feature, double defaultValue, String helpText) {
     final controller = _controllers[feature]!;
     final focusNode = _focusNodes[feature]!;
     final label = AppConstants.featureLabels[feature] ?? feature;

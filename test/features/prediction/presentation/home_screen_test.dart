@@ -87,7 +87,16 @@ void main() {
       await tester.pumpAndSettle();
 
       // Clear all fields first (form has defaults now)
-      for (final feature in ['MedInc', 'HouseAge', 'AveRooms', 'AveBedrms', 'Population', 'AveOccup', 'Latitude', 'Longitude']) {
+      for (final feature in [
+        'MedInc',
+        'HouseAge',
+        'AveRooms',
+        'AveBedrms',
+        'Population',
+        'AveOccup',
+        'Latitude',
+        'Longitude'
+      ]) {
         await tester.enterText(find.byKey(Key('field_$feature')), '');
       }
 
