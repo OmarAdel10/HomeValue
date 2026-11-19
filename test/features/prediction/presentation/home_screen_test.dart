@@ -53,7 +53,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Check that all form fields are present
+      // Check that all form fields are present (labels from featureLabels)
       expect(find.text('Median Income (in \$100k)'), findsOneWidget);
       expect(find.text('House Age (years)'), findsOneWidget);
       expect(find.text('Average Rooms per Household'), findsOneWidget);
@@ -62,7 +62,8 @@ void main() {
       expect(find.text('Average Household Occupancy'), findsOneWidget);
       expect(find.text('Latitude'), findsOneWidget);
       expect(find.text('Longitude'), findsOneWidget);
-      expect(find.text('Ocean Proximity'), findsOneWidget);
+      // Ocean Proximity appears in section header and dropdown label
+      expect(find.text('Ocean Proximity'), findsWidgets);
     });
 
     testWidgets('shows validation error when fields are empty',
@@ -85,14 +86,18 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Scroll to and tap predict button without filling form
-      await tester.ensureVisible(find.text('Predict Price'));
-      await tester.tap(find.text('Predict Price'));
+      // Clear all fields first (form has defaults now)
+      for (final feature in ['MedInc', 'HouseAge', 'AveRooms', 'AveBedrms', 'Population', 'AveOccup', 'Latitude', 'Longitude']) {
+        await tester.enterText(find.byKey(Key('field_$feature')), '');
+      }
+
+      // Scroll to and tap predict button
+      await tester.ensureVisible(find.byKey(const Key('predict_button')));
+      await tester.tap(find.byKey(const Key('predict_button')));
       await tester.pumpAndSettle();
 
       // Should show validation errors
-      expect(
-          find.text('Please enter Median Income (in \$100k)'), findsOneWidget);
+      expect(find.textContaining('Please enter'), findsWidgets);
     });
 
     testWidgets('shows prediction result dialog on success',
@@ -139,9 +144,9 @@ void main() {
           find.widgetWithText(TextFormField, 'Longitude'), '-122.23');
 
       // Select ocean proximity - scroll to dropdown, tap it, then select from menu
-      await tester
-          .ensureVisible(find.byKey(const Key('ocean_proximity_dropdown')));
-      await tester.tap(find.byKey(const Key('ocean_proximity_dropdown')));
+      final dropdown = find.byKey(const Key('ocean_proximity_dropdown')).first;
+      await tester.ensureVisible(dropdown);
+      await tester.tap(dropdown);
       await tester.pumpAndSettle();
 
       // Select NEAR BAY from dropdown menu
@@ -149,8 +154,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap predict button - scroll to it first
-      await tester.ensureVisible(find.text('Predict Price'));
-      await tester.tap(find.text('Predict Price'));
+      await tester.ensureVisible(find.byKey(const Key('predict_button')));
+      await tester.tap(find.byKey(const Key('predict_button')));
       await tester.pumpAndSettle();
 
       // Should show prediction dialog

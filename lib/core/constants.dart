@@ -51,14 +51,14 @@ class AppConstants {
 
   // Feature field hints for UI
   static const Map<String, String> featureHints = {
-    'MedInc': 'e.g., 8.3252',
-    'HouseAge': 'e.g., 41',
-    'AveRooms': 'e.g., 6.98',
-    'AveBedrms': 'e.g., 1.02',
-    'Population': 'e.g., 322',
-    'AveOccup': 'e.g., 2.55',
-    'Latitude': 'e.g., 37.88',
-    'Longitude': 'e.g., -122.23',
+    'MedInc': 'Median income in \$100k (e.g., 8.3252 = \$832k)',
+    'HouseAge': 'Median house age in years (e.g., 41)',
+    'AveRooms': 'Avg total rooms per household (e.g., 6.98)',
+    'AveBedrms': 'Avg bedrooms per household (e.g., 1.02)',
+    'Population': 'Block group population (e.g., 322)',
+    'AveOccup': 'Avg people per household (e.g., 2.55)',
+    'Latitude': 'CA latitude ~32–42 (e.g., 37.88)',
+    'Longitude': 'CA longitude ~-124 to -114 (e.g., -122.23)',
   };
 
   // Model names for selection
