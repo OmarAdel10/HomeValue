@@ -249,9 +249,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return DropdownButtonFormField<OceanProximity>(
       key: const Key('ocean_proximity_dropdown'),
       initialValue: _selectedOceanProximity,
-      decoration: InputDecoration(
-        labelText: AppConstants.featureLabels[AppConstants.oceanProximityField],
-        prefixIcon: const Icon(Icons.waves),
+      decoration: const InputDecoration(
+        // Label intentionally omitted — section header 'Environment' /
+        // 'Proximity to water' already explains this field.
+        prefixIcon: Icon(Icons.waves),
       ),
       items: OceanProximity.values.map((proximity) {
         return DropdownMenuItem(
