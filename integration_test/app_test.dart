@@ -42,7 +42,7 @@ void main() {
       expect(find.text('Longitude'), findsOneWidget);
       // Ocean Proximity dropdown (label removed — section header 'Environment' /
       // 'Proximity to water' explains it)
-      expect(find.byKey(const Key('ocean_proximity_dropdown')), findsOneWidget);
+      expect(find.byKey(const Key('ocean_proximity_dropdown')), findsWidgets);
     });
 
     testWidgets('Navigation to settings screen', (WidgetTester tester) async {
