@@ -67,7 +67,8 @@ void main() {
       expect(find.text('Longitude'), findsOneWidget);
       // Ocean Proximity dropdown (label removed — section header 'Environment' /
       // 'Proximity to water' explains it)
-      expect(find.byType(DropdownButtonFormField<OceanProximity>), findsWidgets);
+      expect(
+          find.byType(DropdownButtonFormField<OceanProximity>), findsWidgets);
     });
 
     testWidgets('shows validation error when fields are empty',
