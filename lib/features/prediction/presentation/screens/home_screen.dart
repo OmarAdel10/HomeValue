@@ -131,46 +131,96 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFeatureInputs() {
-    final children = <Widget>[];
-    for (final feature in AppConstants.featureNames) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: _buildFeatureField(feature),
-        ),
-      );
-    }
-    return Column(children: children);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Core Property Features
+        _buildSectionHeader(
+            'Property Details', 'Basic characteristics of the house'),
+        _buildFeatureFieldWithDefault('MedInc', 8.3252,
+            'Median income in \$100k (e.g., 8.3252 = \$832k)'),
+        _buildFeatureFieldWithDefault(
+            'HouseAge', 41, 'Median house age in years (e.g., 41)'),
+        _buildFeatureFieldWithDefault(
+            'AveRooms', 6.98, 'Avg total rooms per household (e.g., 6.98)'),
+        _buildFeatureFieldWithDefault(
+            'AveBedrms', 1.02, 'Avg bedrooms per household (e.g., 1.02)'),
+        const SizedBox(height: 24),
+        // Location & Demographics (with smart defaults)
+        _buildSectionHeader('Location & Area',
+            'Neighborhood context — auto-filled for California'),
+        _buildFeatureFieldWithDefault('Latitude', 37.88,
+            'Approximate latitude in California (e.g., 37.88 for Bay Area)'),
+        _buildFeatureFieldWithDefault('Longitude', -122.23,
+            'Approximate longitude in California (e.g., -122.23 for Bay Area)'),
+        _buildFeatureFieldWithDefault(
+            'Population', 322, 'Block group population (typical: 300–3000)'),
+        _buildFeatureFieldWithDefault(
+            'AveOccup', 2.55, 'Average people per household'),
+        const SizedBox(height: 24),
+        // Ocean Proximity
+        _buildSectionHeader('Environment', 'Proximity to water'),
+        _buildOceanProximitySelector(),
+      ],
+    );
   }
 
-  Widget _buildFeatureField(String feature) {
+  Widget _buildSectionHeader(String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureFieldWithDefault(
+      String feature, double defaultValue, String helpText) {
     final controller = _controllers[feature]!;
     final focusNode = _focusNodes[feature]!;
     final label = AppConstants.featureLabels[feature] ?? feature;
     final hint = AppConstants.featureHints[feature] ?? '';
 
-    return TextFormField(
-      controller: controller,
-      focusNode: focusNode,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(_getFieldIcon(feature)),
+    // Set default if empty
+    if (controller.text.isEmpty) {
+      controller.text = defaultValue.toString();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextFormField(
+        key: Key('field_$feature'),
+        controller: controller,
+        focusNode: focusNode,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          helperText: helpText,
+          prefixIcon: Icon(_getFieldIcon(feature)),
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please enter $label';
+          }
+          final numValue = num.tryParse(value);
+          if (numValue == null) {
+            return 'Please enter a valid number';
+          }
+          return null;
+        },
       ),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter $label';
-        }
-        final numValue = num.tryParse(value);
-        if (numValue == null) {
-          return 'Please enter a valid number';
-        }
-        return null;
-      },
-      onChanged: (value) {
-        // Validation happens via listener
-      },
     );
   }
 
@@ -231,6 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final isLoading = state is PredictionLoading;
 
         return FilledButton(
+          key: const Key('predict_button'),
           onPressed: isLoading ? null : _onPredictPressed,
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),

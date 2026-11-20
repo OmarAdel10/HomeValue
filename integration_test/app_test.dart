@@ -40,7 +40,8 @@ void main() {
       expect(find.text('Average Household Occupancy'), findsOneWidget);
       expect(find.text('Latitude'), findsOneWidget);
       expect(find.text('Longitude'), findsOneWidget);
-      expect(find.text('Ocean Proximity'), findsOneWidget);
+      // Ocean Proximity appears in section header and dropdown label
+      expect(find.text('Ocean Proximity'), findsWidgets);
     });
 
     testWidgets('Navigation to settings screen', (WidgetTester tester) async {
