@@ -53,7 +53,7 @@ class BackendService {
     if (_isStarting) {
       // Wait for startup to complete
       await _waitForState(BackendState.running,
-          timeout: const Duration(seconds: 30));
+          timeout: const Duration(seconds: 180));
       return _currentState == BackendState.running;
     }
 
@@ -63,7 +63,7 @@ class BackendService {
     try {
       await _startBackend();
       final ready = await _waitForState(BackendState.running,
-          timeout: const Duration(seconds: 30));
+          timeout: const Duration(seconds: 180));
       return ready;
     } catch (e) {
       _updateState(BackendState.failed);

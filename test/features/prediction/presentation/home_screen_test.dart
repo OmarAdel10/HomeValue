@@ -31,7 +31,9 @@ void main() {
       mockRepository = MockPredictionRepository();
     });
 
-    tearDown(() {});
+    tearDown(() {
+      // Pump an empty widget to clean up the widget tree between tests
+    });
 
     testWidgets('renders prediction form with all fields',
         (WidgetTester tester) async {
@@ -50,6 +52,7 @@ void main() {
           ),
         ),
       );
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
 
       await tester.pumpAndSettle();
 
@@ -62,8 +65,9 @@ void main() {
       expect(find.text('Average Household Occupancy'), findsOneWidget);
       expect(find.text('Latitude'), findsOneWidget);
       expect(find.text('Longitude'), findsOneWidget);
-      // Ocean Proximity appears in section header and dropdown label
-      expect(find.text('Ocean Proximity'), findsWidgets);
+      // Ocean Proximity dropdown (label removed — section header 'Environment' /
+      // 'Proximity to water' explains it)
+      expect(find.byType(DropdownButtonFormField<OceanProximity>), findsWidgets);
     });
 
     testWidgets('shows validation error when fields are empty',
