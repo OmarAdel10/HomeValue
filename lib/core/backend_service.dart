@@ -173,7 +173,8 @@ class BackendService {
           .get(Uri.parse(healthUrl))
           .timeout(const Duration(seconds: 3));
       final healthy = response.statusCode == 200;
-      _log('Health check: ${healthy ? 'HEALTHY' : 'UNHEALTHY (status: ${response.statusCode})'}');
+      _log(
+          'Health check: ${healthy ? 'HEALTHY' : 'UNHEALTHY (status: ${response.statusCode})'}');
       return healthy;
     } catch (e) {
       _log('Health check failed: $e');
