@@ -97,7 +97,8 @@ bool isAllowedHost(String host) {
   }
 
   // Allow IPv4 loopback (127.0.0.1) for local development
-  if (address.type == InternetAddressType.IPv4 && address.address == '127.0.0.1') {
+  if (address.type == InternetAddressType.IPv4 &&
+      address.address == '127.0.0.1') {
     // Allow IPv4 loopback
   } else if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
     return false;
@@ -108,7 +109,9 @@ bool isAllowedHost(String host) {
     // Allow IPv6 loopback (::1) for local development
     if (address.address == '::1') {
       // Allow IPv6 loopback
-    } else if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
+    } else if (address.isLoopback ||
+        address.isLinkLocal ||
+        address.isMulticast) {
       return false;
     }
     final bytes = address.rawAddress;
