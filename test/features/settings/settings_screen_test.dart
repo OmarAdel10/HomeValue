@@ -181,8 +181,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter a blocked (private) server URL.
+      // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
       await tester.enterText(
-          find.byType(TextFormField), 'http://127.0.0.1:8000/');
+          find.byType(TextFormField), 'http://10.0.0.1:8000/');
       await tester.pumpAndSettle();
 
       // Tap save button: form validation must reject the host.

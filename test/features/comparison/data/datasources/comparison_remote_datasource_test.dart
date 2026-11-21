@@ -40,13 +40,14 @@ void main() {
       );
     });
 
-    test('rejects loopback IPv4 URL', () {
+    test('allows loopback IPv4 URL for local dev', () {
+      // 127.0.0.1 is allowed for local development
       expect(
         () => ComparisonRemoteDataSource(
           client: MockClient((_) async => http.Response('[]', 200)),
           baseUrl: 'http://127.0.0.1:8000',
         ),
-        throwsA(isA<ArgumentError>()),
+        returnsNormally,
       );
     });
 
@@ -347,10 +348,11 @@ void main() {
       final client = MockClient((request) async {
         fail('request must not be sent to a blocked host');
       });
+      // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
       final datasource = ComparisonRemoteDataSource(
         client: client,
         baseUrl: 'http://8.8.8.8:8000',
-        baseUrlProvider: () => 'http://127.0.0.1:8000',
+        baseUrlProvider: () => 'http://10.0.0.1:8000',
       );
       await expectLater(
         datasource.fetchModelComparison(),
