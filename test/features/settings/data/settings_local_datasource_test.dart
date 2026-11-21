@@ -217,9 +217,12 @@ void main() {
     );
   });
 
-  test('validateServerUrl allows loopback IPv4 for local dev, blocks localhost hostname', () async {
+  test(
+      'validateServerUrl allows loopback IPv4 for local dev, blocks localhost hostname',
+      () async {
     // 127.0.0.1 is allowed for local development
-    await SettingsLocalDataSource.validateServerUrl('http://127.0.0.1:8000/train');
+    await SettingsLocalDataSource.validateServerUrl(
+        'http://127.0.0.1:8000/train');
     // localhost hostname is still blocked
     expect(
       () async => SettingsLocalDataSource.validateServerUrl(

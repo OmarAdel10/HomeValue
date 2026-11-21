@@ -305,7 +305,8 @@ void main() {
       );
     });
 
-    test('allows loopback IPv4 for local dev, blocks localhost hostname', () async {
+    test('allows loopback IPv4 for local dev, blocks localhost hostname',
+        () async {
       // 127.0.0.1 is allowed for local development
       await validateServerUrl('http://127.0.0.1:8000/train');
       // localhost hostname is still blocked
