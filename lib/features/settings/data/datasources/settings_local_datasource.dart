@@ -16,7 +16,7 @@ class SettingsLocalDataSource {
   static const String _lastAutoRetrainKey = 'last_auto_retrain_at';
   static const String _initialRetrainDelayKey = 'initial_retrain_delay_millis';
 
-  static const String _defaultServerUrl = 'http://example.com:8000';
+  static const String _defaultServerUrl = 'http://127.0.0.1:8000';
   static const int _defaultThemeMode = 0; // ThemeMode.system
   static const bool _defaultAutoRetrain = false;
 

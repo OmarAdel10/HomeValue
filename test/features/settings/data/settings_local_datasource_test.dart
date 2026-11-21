@@ -28,7 +28,7 @@ void main() {
   test('returns defaults when nothing is stored', () async {
     final settings = await dataSource.getSettings();
 
-    expect(settings.serverUrl, 'http://example.com:8000');
+    expect(settings.serverUrl, 'http://127.0.0.1:8000');
     expect(settings.themeMode, ThemeMode.system);
     expect(settings.autoRetrain, isFalse);
     expect(settings.lastAutoRetrainAt, isNull);

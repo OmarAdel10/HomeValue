@@ -96,9 +96,22 @@ bool isAllowedHost(String host) {
     return true; // Domain name: allowed
   }
 
+  // Allow IPv4 loopback (127.0.0.1) for local development
+  if (address.type == InternetAddressType.IPv4 &&
+      address.address == '127.0.0.1') {
+    // Allow IPv4 loopback
+  } else if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
+    return false;
+  }
+
   // IPv6: normalize via InternetAddress to catch expanded notation.
   if (address.type == InternetAddressType.IPv6) {
-    if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
+    // Allow IPv6 loopback (::1) for local development
+    if (address.address == '::1') {
+      // Allow IPv6 loopback
+    } else if (address.isLoopback ||
+        address.isLinkLocal ||
+        address.isMulticast) {
       return false;
     }
     final bytes = address.rawAddress;
