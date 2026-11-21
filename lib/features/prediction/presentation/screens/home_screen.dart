@@ -101,8 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 24),
                   _buildFeatureInputs(),
                   const SizedBox(height: 24),
-                  _buildOceanProximitySelector(),
-                  const SizedBox(height: 24),
                   _buildPredictButton(),
                 ],
               ),
