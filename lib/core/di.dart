@@ -34,7 +34,7 @@ Future<void> initDependencies() async {
     () => PredictionRemoteDataSource(
       baseUrl: AppConstants.apiBaseUrl,
       baseUrlProvider: () => sl<SettingsLocalDataSource>().serverUrl,
-      timeout: AppConstants.apiTimeout,
+      timeout: AppConstants.predictionTimeout,
     ),
   );
 
@@ -47,6 +47,7 @@ Future<void> initDependencies() async {
       client: IOClient(HttpClient()),
       baseUrl: AppConstants.apiBaseUrl,
       baseUrlProvider: () => sl<SettingsLocalDataSource>().serverUrl,
+      timeout: AppConstants.predictionTimeout,
     ),
   );
 
