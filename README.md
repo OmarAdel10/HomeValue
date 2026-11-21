@@ -96,31 +96,51 @@ graph TD
 - Python 3.11+
 - Flutter 3.44+ with Linux desktop support (`flutter config --enable-linux-desktop`)
 
-### Backend
+### 1. Install ML Backend Dependencies
 ```bash
 cd ml_backend
 pip install -e ".[dev]"
-make test             # pytest with branch coverage
-make train            # Train model and save to models/
-make serve            # Start FastAPI server on http://localhost:8000
 ```
+This installs the package in development mode with all dev dependencies (pytest, black, mypy, etc.).
 
-### Frontend
+### 2. Train the Model (First Run)
 ```bash
-# From repository root
+make train
+```
+This trains all models, selects the best one, and saves it to `ml_backend/models/best_model.joblib`. Takes ~2-3 minutes.
+
+### 3. Start the Backend Server
+```bash
+make serve
+```
+Starts the FastAPI server on `http://localhost:8000`. Keep this terminal open.
+
+### 4. Run the Flutter App
+In a **new terminal**, from the repository root:
+```bash
 flutter pub get
 flutter run -d linux
+```
+The app auto-detects the running backend at `http://127.0.0.1:8000`. If no backend is running, it attempts to auto-start one.
+
+### Alternative: One-Command Development
+```bash
+# Terminal 1: Backend
+cd ml_backend && pip install -e ".[dev]" && make train && make serve
+
+# Terminal 2: Frontend
+flutter pub get && flutter run -d linux
 ```
 
 ### Run All Tests
 ```bash
-# Backend
+# Backend tests
 cd ml_backend && make test
 
-# Flutter
+# Flutter tests (from repo root)
 flutter test
 
-# Integration (requires trained model and running server)
+# Integration tests (requires trained model)
 ./scripts/e2e_test.sh
 ```
 
