@@ -51,21 +51,21 @@ class BackendService {
   Future<bool> ensureRunning() async {
     // Already running?
     if (await _isHealthy()) {
-      _log('Backend already running');
+      _log('Backend already running at $baseUrl');
       _updateState(BackendState.running);
       return true;
     }
 
     // Already starting?
     if (_isStarting) {
-      _log('Backend already starting, waiting...');
+      _log('Backend already starting at $baseUrl, waiting...');
       // Wait for startup to complete
       await _waitForState(BackendState.running,
           timeout: const Duration(seconds: 180));
       return _currentState == BackendState.running;
     }
 
-    _log('Starting backend...');
+    _log('Starting backend at $baseUrl...');
     _isStarting = true;
     _updateState(BackendState.starting);
 
@@ -207,7 +207,12 @@ class BackendService {
     if (venvPython.existsSync()) {
       return venvPython.path;
     }
-    // Fallback to system python
+    // Fallback to system python - resolve full path using `which`
+    final result = Process.runSync('which', ['python3']);
+    if (result.exitCode == 0 && result.stdout.toString().trim().isNotEmpty) {
+      return result.stdout.toString().trim();
+    }
+    // Last resort: assume python3 is in PATH
     return 'python3';
   }
 

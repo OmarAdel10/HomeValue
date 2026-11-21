@@ -21,7 +21,7 @@ class ComparisonRemoteDataSource {
     Duration? timeout,
   })  : _client = client ?? IOClient(HttpClient()),
         _ownsClient = client == null,
-        _timeout = timeout ?? AppConstants.apiTimeout,
+        _timeout = timeout ?? AppConstants.predictionTimeout,
         _baseUrl = baseUrl {
     validation.assertAllowedHost(baseUrl);
   }
