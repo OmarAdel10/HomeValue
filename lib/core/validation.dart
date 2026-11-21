@@ -99,7 +99,7 @@ bool isAllowedHost(String host) {
   // Allow IPv4 loopback (127.0.0.1) for local development
   if (address.type == InternetAddressType.IPv4 &&
       address.address == '127.0.0.1') {
-    // Allow IPv4 loopback
+    return true;
   } else if (address.isLoopback || address.isLinkLocal || address.isMulticast) {
     return false;
   }

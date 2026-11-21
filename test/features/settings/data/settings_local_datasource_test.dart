@@ -72,8 +72,9 @@ void main() {
     };
 
     await dataSource.getSettings();
+    // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
     await expectLater(
-      dataSource.updateServerUrl('http://127.0.0.1:8000/'),
+      dataSource.updateServerUrl('http://10.0.0.1:8000/'),
       throwsArgumentError,
     );
     final settings = await dataSource.getSettings();
@@ -216,12 +217,13 @@ void main() {
     );
   });
 
-  test('validateServerUrl blocks loopback IPv4', () {
-    expect(
-      () async => SettingsLocalDataSource.validateServerUrl(
-          'http://127.0.0.1:8000/train'),
-      throwsA(isArgumentError),
-    );
+  test(
+      'validateServerUrl allows loopback IPv4 for local dev, blocks localhost hostname',
+      () async {
+    // 127.0.0.1 is allowed for local development
+    await SettingsLocalDataSource.validateServerUrl(
+        'http://127.0.0.1:8000/train');
+    // localhost hostname is still blocked
     expect(
       () async => SettingsLocalDataSource.validateServerUrl(
           'http://localhost:8000/train'),
@@ -279,8 +281,9 @@ void main() {
   // --- updateServerUrl validation side-effect tests ---
 
   test('updateServerUrl rejects blocked host and does not persist', () async {
+    // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
     expect(
-      () async => dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
+      () async => dataSource.updateServerUrl('http://10.0.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     expect(prefs.getString('server_url'), isNull);
@@ -297,15 +300,16 @@ void main() {
   // --- getSettings validates default URL ---
 
   test('getSettings with blocked default serverUrl does not throw', () async {
+    // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
     SharedPreferences.setMockInitialValues(<String, Object>{
-      'server_url': 'http://127.0.0.1:8000/',
+      'server_url': 'http://10.0.0.1:8000/',
     });
     prefs = await SharedPreferences.getInstance();
     dataSource = SettingsLocalDataSource(prefs);
 
     // Should not throw; blocked URL is tolerated at load but retraining is rejected.
     final settings = await dataSource.getSettings();
-    expect(settings.serverUrl, 'http://127.0.0.1:8000/');
+    expect(settings.serverUrl, 'http://10.0.0.1:8000/');
   });
 
   // --- SSRF edge-case tests ---
@@ -373,14 +377,15 @@ void main() {
   });
 
   test('serverUrlBlocked returns true for blocked URL', () async {
+    // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
     await expectLater(
-      dataSource.updateServerUrl('http://127.0.0.1:8000/train'),
+      dataSource.updateServerUrl('http://10.0.0.1:8000/train'),
       throwsA(isArgumentError),
     );
     // updateServerUrl rejects before persisting, so stored URL is still default.
     // Directly persist a blocked URL via setMockInitialValues for a fresh instance.
     SharedPreferences.setMockInitialValues(<String, Object>{
-      'server_url': 'http://127.0.0.1:8000/',
+      'server_url': 'http://10.0.0.1:8000/',
     });
     prefs = await SharedPreferences.getInstance();
     dataSource = SettingsLocalDataSource(prefs);

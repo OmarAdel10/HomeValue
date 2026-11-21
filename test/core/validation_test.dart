@@ -36,8 +36,8 @@ void main() {
       expect(isAllowedHost('2001:db8::1'), isTrue);
     });
 
-    test('blocks loopback IPv4', () {
-      expect(isAllowedHost('127.0.0.1'), isFalse);
+    test('allows loopback IPv4 for local dev, blocks localhost hostname', () {
+      expect(isAllowedHost('127.0.0.1'), isTrue);
       expect(isAllowedHost('localhost'), isFalse);
       expect(isAllowedHost('localhost.'), isFalse);
     });
@@ -305,11 +305,11 @@ void main() {
       );
     });
 
-    test('blocks loopback IPv4', () {
-      expect(
-        () async => validateServerUrl('http://127.0.0.1:8000/train'),
-        throwsA(isArgumentError),
-      );
+    test('allows loopback IPv4 for local dev, blocks localhost hostname',
+        () async {
+      // 127.0.0.1 is allowed for local development
+      await validateServerUrl('http://127.0.0.1:8000/train');
+      // localhost hostname is still blocked
       expect(
         () async => validateServerUrl('http://localhost:8000/train'),
         throwsA(isArgumentError),
@@ -381,8 +381,9 @@ void main() {
     });
 
     test('blocks domain resolving to blocked IP', () {
+      // Use RFC 1918 private IP (10.0.0.1) which is still blocked
       dnsLookup =
-          (host) async => <InternetAddress>[InternetAddress('127.0.0.1')];
+          (host) async => <InternetAddress>[InternetAddress('10.0.0.1')];
       expect(
         () async => validateServerUrl('http://evil.example.com/train'),
         throwsA(isArgumentError),
@@ -444,11 +445,10 @@ void main() {
       expect(() => assertAllowedHost('http://8.8.8.8/'), returnsNormally);
     });
 
-    test('rejects blocked host', () {
-      expect(
-        () => assertAllowedHost('http://127.0.0.1/'),
-        throwsA(isArgumentError),
-      );
+    test('allows loopback IPv4 for local dev, rejects blocked host', () {
+      // 127.0.0.1 is allowed for local development
+      assertAllowedHost('http://127.0.0.1/');
+      // localhost hostname is still blocked
       expect(
         () => assertAllowedHost('http://localhost:8000/'),
         throwsA(isArgumentError),
@@ -505,11 +505,9 @@ void main() {
       );
     });
 
-    test('rejects blocked host', () {
-      expect(
-        () => validateServerUrlSync('http://127.0.0.1:8000'),
-        throwsA(isArgumentError),
-      );
+    test('allows loopback IPv4 for local dev', () {
+      // 127.0.0.1 is allowed for local development
+      validateServerUrlSync('http://127.0.0.1:8000');
     });
 
     test('rejects trailing-dot loopback and octal shorthand hosts', () {

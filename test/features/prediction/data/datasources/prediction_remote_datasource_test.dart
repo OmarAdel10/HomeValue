@@ -15,7 +15,8 @@ import 'package:home_value/core/validation.dart' as validation;
 
 void main() {
   const baseUrl = 'http://8.8.8.8:8000';
-  const blockedUrl = 'http://127.0.0.1:8000';
+  // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
+  const blockedUrl = 'http://10.0.0.1:8000';
 
   setUp(() {
     validation.dnsLookup =
@@ -61,7 +62,7 @@ void main() {
       );
     });
 
-    test('rejects loopback IPv4 URL', () {
+    test('rejects RFC 1918 private URL', () {
       expect(
         () => PredictionRemoteDataSource(
           baseUrl: blockedUrl,
@@ -631,7 +632,8 @@ void main() {
       final datasource = PredictionRemoteDataSource(
         baseUrl: 'http://8.8.8.8:8000',
         timeout: const Duration(seconds: 5),
-        baseUrlProvider: () => 'http://127.0.0.1:8000',
+        // Use RFC 1918 private IP which is still blocked (127.0.0.1 is now allowed for local dev)
+        baseUrlProvider: () => 'http://10.0.0.1:8000',
         client: MockClient((_) async => http.Response('{}', 200)),
       );
       await expectLater(
