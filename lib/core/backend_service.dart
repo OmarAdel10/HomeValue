@@ -155,13 +155,17 @@ class BackendService {
     return completer.future;
   }
 
-  /// Starts periodic health checks.
+  /// Starts periodic health checks after a brief delay to allow the server to fully start.
   void _startHealthChecks() {
     _healthCheckTimer?.cancel();
-    _healthCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!await _isHealthy()) {
-        _updateState(BackendState.failed);
-      }
+    // Delay the first health check to allow the server to fully start accepting connections.
+    // Uvicorn reports "Application startup complete" before the server is fully ready to accept connections.
+    _healthCheckTimer = Timer(const Duration(seconds: 3), () {
+      _healthCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        if (!await _isHealthy()) {
+          _updateState(BackendState.failed);
+        }
+      });
     });
   }
 
@@ -177,7 +181,7 @@ class BackendService {
           'Health check: ${healthy ? 'HEALTHY' : 'UNHEALTHY (status: ${response.statusCode})'}');
       return healthy;
     } catch (e) {
-      _log('Health check failed: $e');
+      _log('Health check failed at $baseUrl: $e');
       return false;
     }
   }

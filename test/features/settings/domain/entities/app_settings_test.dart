@@ -12,8 +12,8 @@ void main() {
       initialRetrainDelay: Duration.zero,
     );
 
-    test('defaults uses example.com public URL', () {
-      expect(AppSettings.defaults().serverUrl, 'http://example.com:8000');
+    test('defaults uses 127.0.0.1 public URL', () {
+      expect(AppSettings.defaults().serverUrl, 'http://127.0.0.1:8000');
       expect(AppSettings.defaults().themeMode, ThemeMode.system);
       expect(AppSettings.defaults().autoRetrain, isFalse);
       expect(AppSettings.defaults().lastAutoRetrainAt, isNull);
