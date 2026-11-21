@@ -12,6 +12,12 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+/// Prints a log message with [BackendService] prefix.
+void _log(String message) {
+  // ignore: avoid_print
+  print('[BackendService] $message');
+}
+
 /// Manages the ML backend lifecycle.
 class BackendService {
   BackendService._();
@@ -45,18 +51,21 @@ class BackendService {
   Future<bool> ensureRunning() async {
     // Already running?
     if (await _isHealthy()) {
+      _log('Backend already running');
       _updateState(BackendState.running);
       return true;
     }
 
     // Already starting?
     if (_isStarting) {
+      _log('Backend already starting, waiting...');
       // Wait for startup to complete
       await _waitForState(BackendState.running,
           timeout: const Duration(seconds: 180));
       return _currentState == BackendState.running;
     }
 
+    _log('Starting backend...');
     _isStarting = true;
     _updateState(BackendState.starting);
 
@@ -64,8 +73,10 @@ class BackendService {
       await _startBackend();
       final ready = await _waitForState(BackendState.running,
           timeout: const Duration(seconds: 180));
+      _log('Backend startup ${ready ? 'succeeded' : 'failed'}');
       return ready;
     } catch (e) {
+      _log('Backend startup error: $e');
       _updateState(BackendState.failed);
       return false;
     } finally {
@@ -75,14 +86,20 @@ class BackendService {
 
   /// Starts the uvicorn server as a subprocess.
   Future<void> _startBackend() async {
+    _log('Starting ML backend...');
     final mlBackendDir = _getMlBackendDirectory();
     final pythonExecutable = _getPythonExecutable(mlBackendDir);
 
+    _log('Using Python: $pythonExecutable');
+    _log('Working directory: ${mlBackendDir.path}');
+
     if (!await File(pythonExecutable).exists()) {
+      _log('ERROR: Python executable not found at $pythonExecutable');
       throw StateError('Python executable not found at $pythonExecutable. '
           'Run "pip install -e .[dev]" in ml_backend directory first.');
     }
 
+    _log('Starting uvicorn server...');
     _backendProcess = await Process.start(
       pythonExecutable,
       [
@@ -98,7 +115,10 @@ class BackendService {
       mode: ProcessStartMode.inheritStdio,
     );
 
+    _log('Backend process started (PID: ${_backendProcess!.pid})');
+
     unawaited(_backendProcess!.exitCode.then((code) {
+      _log('Backend process exited with code: $code');
       if (_currentState == BackendState.running) {
         _updateState(BackendState.stopped);
       }
@@ -148,11 +168,16 @@ class BackendService {
   /// Checks if backend is healthy.
   Future<bool> _isHealthy() async {
     try {
+      _log('Checking health at $healthUrl...');
       final response = await http
           .get(Uri.parse(healthUrl))
           .timeout(const Duration(seconds: 3));
-      return response.statusCode == 200;
-    } catch (_) {
+      final healthy = response.statusCode == 200;
+      _log(
+          'Health check: ${healthy ? 'HEALTHY' : 'UNHEALTHY (status: ${response.statusCode})'}');
+      return healthy;
+    } catch (e) {
+      _log('Health check failed: $e');
       return false;
     }
   }

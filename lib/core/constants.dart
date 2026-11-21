@@ -5,6 +5,8 @@ class AppConstants {
   // API Configuration
   static const String apiBaseUrl = 'http://example.com:8000';
   static const Duration apiTimeout = Duration(seconds: 30);
+  // Prediction/Comparison timeout: model training/inference can take longer
+  static const Duration predictionTimeout = Duration(minutes: 5);
 
   // API Endpoints
   static const String predictEndpoint = '/predict';
